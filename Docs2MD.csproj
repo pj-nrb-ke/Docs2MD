@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Docs2MD</AssemblyName>
+    <RootNamespace>Docs2MD</RootNamespace>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DOCX -> HTML -->
+    <PackageReference Include="Mammoth" Version="1.*" />
+    <!-- HTML -> Markdown -->
+    <PackageReference Include="ReverseMarkdown" Version="4.6.0" />
+    <!-- PDF text extraction -->
+    <PackageReference Include="PdfPig" Version="0.1.9" />
+    <!-- PDF page rasterisation (PDFium) for OCR -->
+    <PackageReference Include="Docnet.Core" Version="2.6.0" />
+    <!-- OCR engine (bundles win-x64 native dlls) -->
+    <PackageReference Include="Tesseract" Version="5.2.0" />
+    <!-- Raw BGRA -> PNG for Tesseract input -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ship tessdata next to the exe if present -->
+    <None Include="tessdata\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
