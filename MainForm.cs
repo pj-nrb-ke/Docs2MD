@@ -58,7 +58,9 @@ public sealed class MainForm : Form
         var addFolder = MakeButton("Add folder…", (_, _) => AddFolderDialog());
         var removeSel = MakeButton("Remove selected", (_, _) => RemoveSelected());
         var clearAll = MakeButton("Clear", (_, _) => _fileList.Items.Clear());
-        fileButtons.Controls.AddRange([addFiles, addFolder, removeSel, clearAll]);
+        var sep = new Label { Text = "│", AutoSize = true, Margin = new Padding(8, 7, 8, 3), ForeColor = Color.Silver };
+        var wireframeViewer = MakeButton("🖼 Wireframe Viewer…", (_, _) => new WireframeViewerForm().Show(this));
+        fileButtons.Controls.AddRange([addFiles, addFolder, removeSel, clearAll, sep, wireframeViewer]);
         root.Controls.Add(fileButtons, 0, 1);
 
         // --- Row 2: options (two fixed rows so nothing is cut off at any width) --

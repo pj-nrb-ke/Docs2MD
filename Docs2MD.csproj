@@ -13,6 +13,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Markdown -> HTML (wireframe viewer) -->
+    <PackageReference Include="Markdig" Version="0.38.*" />
+    <!-- Embedded Chromium browser (wireframe viewer) -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.*" />
     <!-- DOCX -> HTML -->
     <PackageReference Include="Mammoth" Version="1.*" />
     <!-- HTML -> Markdown -->
