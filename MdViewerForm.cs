@@ -102,6 +102,18 @@ public sealed class MdViewerForm : MaterialForm
                         "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-cache");
                 };
 
+                // When a file is dragged onto the WebView2 area, Chromium intercepts
+                // the drop and tries to navigate to the file:// URL directly (bypassing
+                // WinForms DragDrop). Intercept here and route .md files through LoadAsync.
+                _webView.CoreWebView2.NavigationStarting += (_, e) =>
+                {
+                    if (!e.Uri.StartsWith("file://")) return;
+                    e.Cancel = true;
+                    var localPath = Uri.UnescapeDataString(new Uri(e.Uri).LocalPath);
+                    if (localPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+                        _ = LoadAsync(localPath);
+                };
+
                 if (initialFile != null) await LoadAsync(initialFile);
                 else ShowPlaceholder();
             }
