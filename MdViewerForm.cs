@@ -1,10 +1,11 @@
 namespace Docs2MD;
 
+using System.Reflection;
+using System.Runtime.InteropServices;
 using Markdig;
-using MaterialSkin;
-using MaterialSkin.Controls;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using Svg;
 
 /// <summary>
 /// General-purpose Markdown viewer and document exporter.
@@ -13,48 +14,84 @@ using Microsoft.Web.WebView2.WinForms;
 /// box-drawing characters) get the same smart visual enhancements as the
 /// dedicated Wireframe Viewer.
 /// </summary>
-public sealed class MdViewerForm : MaterialForm
+public sealed class MdViewerForm : Form
 {
+    // ── P/Invoke ─────────────────────────────────────────────────────────
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] private static extern int  SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    private const int WM_NCLBUTTONDOWN = 0xA1;
+    private const int HT_CAPTION       = 0x02;
+
+    private static readonly Color Navy   = Color.FromArgb(27, 53, 96);
+    private static readonly Color BgGray = Color.FromArgb(242, 244, 247);
+
+    // ── Fields ───────────────────────────────────────────────────────────
     private readonly WebView2  _webView;
     private readonly Button    _openBtn;
     private readonly Button    _wordBtn;
     private readonly Button    _excelBtn;
     private readonly Button    _pdfBtn;
     private readonly Button    _copyBtn;
-    private readonly Label          _statusLabel;
-    private string?                 _currentPath;
-    private string?                 _currentMd;
-    private string                  _pendingHtml = "";
-    private int                     _navVersion  = 0;
+    private readonly Label     _statusLabel;
+    private readonly Label     _titleLabel;
+    private string?            _currentPath;
+    private string?            _currentMd;
+    private string             _pendingHtml = "";
+    private int                _navVersion  = 0;
 
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
-    // ── construction ────────────────────────────────────────────────────
+    // ── Construction ─────────────────────────────────────────────────────
 
     public MdViewerForm(string? initialFile = null)
     {
-        MaterialSkinManager.Instance.AddFormToManage(this);
+        FormBorderStyle = FormBorderStyle.None;
+        Text            = "MD Viewer / Export — Docs2MD";
+        Size            = new Size(1150, 860);
+        MinimumSize     = new Size(700, 500);
+        StartPosition   = FormStartPosition.CenterScreen;
+        BackColor       = BgGray;
+        AllowDrop       = true;
+        DragEnter      += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
+        DragDrop       += OnDragDrop;
 
-        Text          = "MD Viewer / Export — Docs2MD";
-        Size          = new Size(1150, 860);
-        MinimumSize   = new Size(700, 500);
-        StartPosition = FormStartPosition.CenterScreen;
-        AllowDrop     = true;
-        DragEnter    += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
-        DragDrop     += OnDragDrop;
+        var iconBmp = LoadLogo(64, 43);
+        if (iconBmp != null) Icon = Icon.FromHandle(iconBmp.GetHicon());
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        Controls.Add(root);
+        // ── Outer shell: title bar (68 px) + content ────────────────────
+        var outer = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
+            Padding = Padding.Empty, Margin = Padding.Empty, BackColor = BgGray
+        };
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));   // title bar
+        outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));   // content
+        Controls.Add(outer);
 
-        // ── Toolbar ─────────────────────────────────────────────────────
+        _titleLabel = new Label();
+        outer.Controls.Add(BuildTitleBar(), 0, 0);
+
+        // ── Content: toolbar + WebView2 ──────────────────────────────────
+        var content = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
+            Padding = Padding.Empty, Margin = Padding.Empty, BackColor = Color.White
+        };
+        content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        // Toolbar panel (white background + bottom divider)
+        var toolbarPanel = new Panel { Dock = DockStyle.Fill, AutoSize = true, BackColor = Color.White };
+        toolbarPanel.Controls.Add(new Panel
+        {
+            Height = 1, Dock = DockStyle.Bottom, BackColor = Color.FromArgb(218, 224, 236)
+        });
+
         var toolbar = new FlowLayoutPanel
         {
-            AutoSize = true,
-            Dock     = DockStyle.Fill,
-            Padding  = new Padding(6, 4, 4, 4)
+            AutoSize = true, Dock = DockStyle.Fill,
+            Padding  = new Padding(6, 4, 4, 4), BackColor = Color.White
         };
 
         _openBtn  = Btn("📂  Open MD…",      () => OpenAsync(),        primary: true);
@@ -74,11 +111,13 @@ public sealed class MdViewerForm : MaterialForm
         };
 
         toolbar.Controls.AddRange([_openBtn, _wordBtn, _excelBtn, _pdfBtn, _copyBtn, _statusLabel]);
-        root.Controls.Add(toolbar, 0, 0);
+        toolbarPanel.Controls.Add(toolbar);
+        content.Controls.Add(toolbarPanel, 0, 0);
 
-        // ── WebView2 ────────────────────────────────────────────────────
+        // ── WebView2 ─────────────────────────────────────────────────────
         _webView = new WebView2 { Dock = DockStyle.Fill };
-        root.Controls.Add(_webView, 0, 1);
+        content.Controls.Add(_webView, 0, 1);
+        outer.Controls.Add(content, 0, 1);
 
         Load += async (_, _) =>
         {
@@ -116,8 +155,7 @@ public sealed class MdViewerForm : MaterialForm
                     }
                 };
 
-                // Belt-and-suspenders: also cancel any in-page file:// navigation
-                // in case the WebView2 version navigates in-place instead of popup.
+                // Belt-and-suspenders: also cancel any in-page file:// navigation.
                 _webView.CoreWebView2.NavigationStarting += (_, e) =>
                 {
                     if (!e.Uri.StartsWith("file://")) return;
@@ -134,7 +172,143 @@ public sealed class MdViewerForm : MaterialForm
         };
     }
 
-    // ── file loading ────────────────────────────────────────────────────
+    // ── Custom title bar (same design as MainForm) ───────────────────────
+
+    private Panel BuildTitleBar()
+    {
+        var bar = new Panel { Dock = DockStyle.Fill, BackColor = Navy };
+
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, BackColor = Navy,
+            Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));     // logo + title
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); // spacer (drag)
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));     // win buttons
+
+        var left = new FlowLayoutPanel
+        {
+            AutoSize = true, WrapContents = false, BackColor = Navy,
+            Dock = DockStyle.Fill, Padding = new Padding(10, 12, 0, 0)
+        };
+        var logoBmp = LoadLogo(64, 43);
+        if (logoBmp != null)
+        {
+            var logoPb = new PictureBox
+            {
+                Image = logoBmp, SizeMode = PictureBoxSizeMode.AutoSize,
+                BackColor = Navy, Margin = new Padding(0, 0, 8, 0)
+            };
+            logoPb.MouseDown += TitleBarDrag;
+            left.Controls.Add(logoPb);
+        }
+
+        _titleLabel.Text      = "MD Viewer / Export";
+        _titleLabel.AutoSize  = true;
+        _titleLabel.Font      = new Font("Segoe UI", 11f, FontStyle.Bold);
+        _titleLabel.ForeColor = Color.White;
+        _titleLabel.BackColor = Navy;
+        _titleLabel.Margin    = new Padding(0, 13, 0, 0);
+        _titleLabel.MouseDown   += TitleBarDrag;
+        _titleLabel.DoubleClick += (_, _) => { WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized; };
+        left.Controls.Add(_titleLabel);
+        left.MouseDown += TitleBarDrag;
+        layout.Controls.Add(left, 0, 0);
+
+        var spacer = new Label { Dock = DockStyle.Fill, BackColor = Navy };
+        spacer.MouseDown += TitleBarDrag;
+        layout.Controls.Add(spacer, 1, 0);
+
+        var minBtn   = WinBtn("─", hoverRed: false);
+        var maxBtn   = WinBtn("□", hoverRed: false);
+        var closeBtn = WinBtn("✕", hoverRed: true);
+        minBtn.Click   += (_, _) => WindowState = FormWindowState.Minimized;
+        maxBtn.Click   += (_, _) => WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+        closeBtn.Click += (_, _) => Close();
+
+        var winBtns = new FlowLayoutPanel { AutoSize = true, WrapContents = false, BackColor = Navy };
+        winBtns.Controls.AddRange([minBtn, maxBtn, closeBtn]);
+
+        var winBtnsWrap = new Panel { Dock = DockStyle.Fill, BackColor = Navy };
+        winBtnsWrap.Controls.Add(winBtns);
+        winBtnsWrap.Resize += (_, _) =>
+            winBtns.Location = new Point(
+                winBtnsWrap.Width  - winBtns.Width,
+                (winBtnsWrap.Height - winBtns.Height) / 2);
+        layout.Controls.Add(winBtnsWrap, 2, 0);
+
+        bar.Controls.Add(layout);
+        bar.MouseDown   += TitleBarDrag;
+        bar.DoubleClick += (_, _) => maxBtn.PerformClick();
+
+        return bar;
+    }
+
+    private void TitleBarDrag(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+        ReleaseCapture();
+        SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+    }
+
+    private static Button WinBtn(string text, bool hoverRed)
+    {
+        var b = new Button
+        {
+            Text      = text,
+            Width     = 48,
+            Height    = 38,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Navy,
+            ForeColor = Color.White,
+            Font      = new Font("Segoe UI", 13f, FontStyle.Bold),
+            Cursor    = Cursors.Arrow
+        };
+        b.FlatAppearance.BorderSize             = 0;
+        b.FlatAppearance.MouseOverBackColor     = hoverRed
+            ? Color.FromArgb(196, 43, 28)
+            : Color.FromArgb(50, 80, 130);
+        return b;
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        const int WM_NCHITTEST = 0x84;
+        if (m.Msg == WM_NCHITTEST && WindowState == FormWindowState.Normal)
+        {
+            int lp = m.LParam.ToInt32();
+            int sx = lp & 0xFFFF;          if (sx > 32767) sx -= 65536;
+            int sy = (lp >> 16) & 0xFFFF;  if (sy > 32767) sy -= 65536;
+            var pt = PointToClient(new Point(sx, sy));
+            int x = pt.X, y = pt.Y, w = ClientSize.Width, h = ClientSize.Height;
+            const int t = 6;
+            if      (x < t    && y < t)    { m.Result = (IntPtr)13; return; }
+            else if (x >= w-t && y < t)    { m.Result = (IntPtr)14; return; }
+            else if (x < t    && y >= h-t) { m.Result = (IntPtr)16; return; }
+            else if (x >= w-t && y >= h-t) { m.Result = (IntPtr)17; return; }
+            else if (y < t)                { m.Result = (IntPtr)12; return; }
+            else if (y >= h-t)             { m.Result = (IntPtr)15; return; }
+            else if (x < t)                { m.Result = (IntPtr)10; return; }
+            else if (x >= w-t)             { m.Result = (IntPtr)11; return; }
+        }
+        base.WndProc(ref m);
+    }
+
+    private static Bitmap? LoadLogo(int width, int height)
+    {
+        try
+        {
+            var asm = Assembly.GetExecutingAssembly();
+            using var stream = asm.GetManifestResourceStream("Docs2MD.logo.svg");
+            if (stream == null) return null;
+            var svg = SvgDocument.Open<SvgDocument>(stream);
+            return svg.Draw(width, height);
+        }
+        catch { return null; }
+    }
+
+    // ── File loading ─────────────────────────────────────────────────────
 
     private async Task OpenAsync()
     {
@@ -154,7 +328,7 @@ public sealed class MdViewerForm : MaterialForm
         {
             _currentPath = path;
             _currentMd   = await File.ReadAllTextAsync(path);
-            Text         = $"MD Viewer — {Path.GetFileName(path)}";
+            _titleLabel.Text = $"MD Viewer  —  {Path.GetFileName(path)}";
 
             await _webView.EnsureCoreWebView2Async();
             var html = Markdown.ToHtml(MdExporter.NormalizeMarkdown(_currentMd), Pipeline);
@@ -177,7 +351,7 @@ public sealed class MdViewerForm : MaterialForm
         _webView.CoreWebView2.Navigate($"https://docs2md.local/v{++_navVersion}");
     }
 
-    // ── export ──────────────────────────────────────────────────────────
+    // ── Export ───────────────────────────────────────────────────────────
 
     private async Task ExportWordAsync()
     {
@@ -223,7 +397,7 @@ public sealed class MdViewerForm : MaterialForm
         Status("Generating PDF…");
         var ps = _webView.CoreWebView2.Environment.CreatePrintSettings();
         ps.ShouldPrintBackgrounds = true;
-        ps.PageWidth  = 21.0; ps.PageHeight = 29.7;  // A4 portrait
+        ps.PageWidth  = 21.0; ps.PageHeight = 29.7;
         ps.MarginLeft = ps.MarginRight = ps.MarginTop = ps.MarginBottom = 1.5;
         await _webView.CoreWebView2.PrintToPdfAsync(dlg.FileName, ps);
         Status($"Saved: {Path.GetFileName(dlg.FileName)}");
@@ -245,7 +419,7 @@ public sealed class MdViewerForm : MaterialForm
         _statusLabel.Text      = _currentPath ?? "";
     }
 
-    // ── helpers ─────────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────
 
     private void OnDragDrop(object? sender, DragEventArgs e)
     {
@@ -265,11 +439,6 @@ public sealed class MdViewerForm : MaterialForm
         _statusLabel.Text      = text;
     }
 
-    /// <summary>
-    /// Clean, neutral document styling — suitable for any markdown content.
-    /// Wireframe code blocks (detected by box-drawing chars) also get the
-    /// same smart element highlighting as the dedicated Wireframe Viewer.
-    /// </summary>
     private static string WrapHtml(string body) => $$"""
         <!DOCTYPE html>
         <html>
@@ -351,7 +520,6 @@ public sealed class MdViewerForm : MaterialForm
         <body>
         {{body}}
         <script>
-        // Wireframe code-block enhancer — same logic as WireframeViewerForm
         document.querySelectorAll('pre code').forEach(function(el) {
             if (!/[┌┐└┘│─├┤┬┴┼╔╗╚╝║═]/.test(el.textContent)) return;
             el.parentElement.classList.add('wf-frame');
@@ -375,7 +543,6 @@ public sealed class MdViewerForm : MaterialForm
 
     private Button Btn(string text, Func<Task> action, bool primary = false)
     {
-        var navy = Color.FromArgb(27, 53, 96);
         var b = new Button
         {
             Text      = text,
@@ -386,11 +553,11 @@ public sealed class MdViewerForm : MaterialForm
             Margin    = new Padding(0, 2, 4, 2),
             Padding   = new Padding(8, 4, 8, 4),
             BackColor = Color.White,
-            ForeColor = navy
+            ForeColor = Navy
         };
-        b.FlatAppearance.BorderColor = primary ? navy : Color.White;
-        b.FlatAppearance.BorderSize  = primary ? 1 : 0;
-        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(235, 240, 250);
+        b.FlatAppearance.BorderColor            = primary ? Navy : Color.White;
+        b.FlatAppearance.BorderSize             = primary ? 1 : 0;
+        b.FlatAppearance.MouseOverBackColor     = Color.FromArgb(235, 240, 250);
         b.Click += async (_, _) =>
         {
             try   { await action(); }
