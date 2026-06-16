@@ -10,6 +10,7 @@
     <AssemblyName>Docs2MD</AssemblyName>
     <RootNamespace>Docs2MD</RootNamespace>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <UseAppHost>true</UseAppHost>
   </PropertyGroup>
 
   <ItemGroup>
