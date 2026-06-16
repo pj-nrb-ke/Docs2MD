@@ -13,10 +13,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Markdown -> HTML (wireframe viewer) -->
+    <!-- Markdown -> HTML (viewer + exporter) -->
     <PackageReference Include="Markdig" Version="0.38.*" />
-    <!-- Embedded Chromium browser (wireframe viewer) -->
+    <!-- Embedded Chromium browser (viewer) -->
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.*" />
+    <!-- Word export: OpenXML SDK -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="2.*" />
+    <!-- Excel export -->
+    <PackageReference Include="ClosedXML" Version="0.102.*" />
     <!-- DOCX -> HTML -->
     <PackageReference Include="Mammoth" Version="1.*" />
     <!-- HTML -> Markdown -->
@@ -29,11 +33,17 @@
     <PackageReference Include="Tesseract" Version="5.2.0" />
     <!-- Raw BGRA -> PNG for Tesseract input -->
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.*" />
+    <!-- Modern WPF-style Material Design UI -->
+    <PackageReference Include="MaterialSkin.2" Version="2.*" />
+    <!-- SVG renderer for logo -->
+    <PackageReference Include="Svg" Version="3.*" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Ship tessdata next to the exe if present -->
     <None Include="tessdata\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Embed brand logo into the assembly -->
+    <EmbeddedResource Include="logo.svg" />
   </ItemGroup>
 
 </Project>

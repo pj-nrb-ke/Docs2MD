@@ -1,6 +1,8 @@
 namespace Docs2MD;
 
 using Markdig;
+using MaterialSkin;
+using MaterialSkin.Controls;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -9,15 +11,15 @@ using Microsoft.Web.WebView2.WinForms;
 /// in an embedded Chromium (WebView2) browser. Supports Save PNG (viewport
 /// capture) and Save PDF (full paginated document) export.
 /// </summary>
-public sealed class WireframeViewerForm : Form
+public sealed class WireframeViewerForm : MaterialForm
 {
-    private readonly WebView2 _webView;
-    private readonly Button   _openBtn;
-    private readonly Button   _savePngBtn;
-    private readonly Button   _savePdfBtn;
-    private readonly Button   _copyBtn;
-    private readonly Label    _statusLabel;
-    private string?           _currentPath;
+    private readonly WebView2  _webView;
+    private readonly Button    _openBtn;
+    private readonly Button    _savePngBtn;
+    private readonly Button    _savePdfBtn;
+    private readonly Button    _copyBtn;
+    private readonly Label          _statusLabel;
+    private string?                 _currentPath;
 
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
@@ -26,13 +28,15 @@ public sealed class WireframeViewerForm : Form
 
     public WireframeViewerForm(string? initialFile = null)
     {
-        Text            = "Wireframe Viewer — Docs2MD";
-        Size            = new Size(1150, 860);
-        MinimumSize     = new Size(700, 500);
-        StartPosition   = FormStartPosition.CenterScreen;
-        AllowDrop       = true;
-        DragEnter      += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
-        DragDrop       += OnDragDrop;
+        MaterialSkinManager.Instance.AddFormToManage(this);
+
+        Text          = "Wireframe Viewer — Docs2MD";
+        Size          = new Size(1150, 860);
+        MinimumSize   = new Size(700, 500);
+        StartPosition = FormStartPosition.CenterScreen;
+        AllowDrop     = true;
+        DragEnter    += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
+        DragDrop     += OnDragDrop;
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -42,23 +46,22 @@ public sealed class WireframeViewerForm : Form
         // ── Toolbar ─────────────────────────────────────────────────────
         var toolbar = new FlowLayoutPanel
         {
-            AutoSize  = true,
-            Dock      = DockStyle.Fill,
-            Padding   = new Padding(6, 4, 4, 4),
-            BackColor = Color.FromArgb(245, 245, 245)
+            AutoSize = true,
+            Dock     = DockStyle.Fill,
+            Padding  = new Padding(6, 4, 4, 4)
         };
 
-        _openBtn    = Btn("📂 Open MD…",   () => OpenAsync());
-        _savePngBtn = Btn("💾 Save PNG…",  () => SavePngAsync());
-        _savePdfBtn = Btn("📄 Save PDF…",  () => SavePdfAsync());
-        _copyBtn    = Btn("📋 Copy Image", () => CopyAsync());
+        _openBtn    = Btn("📂  Open MD…",   () => OpenAsync(),   primary: true);
+        _savePngBtn = Btn("💾  Save PNG…",  () => SavePngAsync());
+        _savePdfBtn = Btn("📄  Save PDF…",  () => SavePdfAsync());
+        _copyBtn    = Btn("📋  Copy Image", () => CopyAsync());
 
         _savePngBtn.Enabled = _savePdfBtn.Enabled = _copyBtn.Enabled = false;
 
         _statusLabel = new Label
         {
             AutoSize  = true,
-            Margin    = new Padding(12, 8, 0, 0),
+            Margin    = new Padding(12, 12, 0, 0),
             ForeColor = Color.Gray,
             Font      = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f)
         };
@@ -429,9 +432,24 @@ public sealed class WireframeViewerForm : Form
         """;
 
     /// <summary>Creates a toolbar button that runs an async action with error surfacing.</summary>
-    private Button Btn(string text, Func<Task> action)
+    private Button Btn(string text, Func<Task> action, bool primary = false)
     {
-        var b = new Button { Text = text, AutoSize = true, Padding = new Padding(8, 4, 8, 4) };
+        var navy = Color.FromArgb(27, 53, 96);
+        var b = new Button
+        {
+            Text      = text,
+            AutoSize  = true,
+            FlatStyle = FlatStyle.Flat,
+            Font      = new Font("Segoe UI", 9f),
+            Cursor    = Cursors.Hand,
+            Margin    = new Padding(0, 2, 4, 2),
+            Padding   = new Padding(8, 4, 8, 4),
+            BackColor = Color.White,
+            ForeColor = navy
+        };
+        b.FlatAppearance.BorderColor = primary ? navy : Color.Transparent;
+        b.FlatAppearance.BorderSize  = primary ? 1 : 0;
+        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(235, 240, 250);
         b.Click += async (_, _) =>
         {
             try   { await action(); }

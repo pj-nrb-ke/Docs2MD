@@ -4,7 +4,17 @@
       "Bash(git --version)",
       "Bash(git init *)",
       "Bash(git remote *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git config *)",
+      "Bash(git commit -q -m 'Initial commit: Docs2MD converter *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git ls-tree *)",
+      "Skill(deep-research)",
+      "Skill(deep-research:*)",
+      "WebSearch",
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget"
     ]
   }
 }
