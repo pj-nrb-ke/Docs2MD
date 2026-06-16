@@ -24,6 +24,8 @@ public sealed class MdViewerForm : MaterialForm
     private readonly Label          _statusLabel;
     private string?                 _currentPath;
     private string?                 _currentMd;
+    private string                  _pendingHtml = "";
+    private int                     _navVersion  = 0;
 
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
@@ -87,6 +89,19 @@ public sealed class MdViewerForm : MaterialForm
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsZoomControlEnabled          = false;
 
+                // Serve generated HTML via a virtual HTTPS host so Chromium renders
+                // it as trusted HTML without any data-URL or file-URL restrictions.
+                _webView.CoreWebView2.AddWebResourceRequestedFilter(
+                    "https://docs2md.local/*", CoreWebView2WebResourceContext.All);
+                _webView.CoreWebView2.WebResourceRequested += (_, e) =>
+                {
+                    if (!e.Request.Uri.StartsWith("https://docs2md.local/")) return;
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(_pendingHtml);
+                    e.Response = _webView.CoreWebView2.Environment.CreateWebResourceResponse(
+                        new MemoryStream(bytes), 200, "OK",
+                        "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-cache");
+                };
+
                 if (initialFile != null) await LoadAsync(initialFile);
                 else ShowPlaceholder();
             }
@@ -103,7 +118,7 @@ public sealed class MdViewerForm : MaterialForm
             Title  = "Open Markdown file",
             Filter = "Markdown (*.md)|*.md|All files (*.*)|*.*"
         };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
+        if (dlg.ShowDialog() == DialogResult.OK)
             await LoadAsync(dlg.FileName);
     }
 
@@ -116,8 +131,9 @@ public sealed class MdViewerForm : MaterialForm
             _currentMd   = await File.ReadAllTextAsync(path);
             Text         = $"MD Viewer — {Path.GetFileName(path)}";
 
+            await _webView.EnsureCoreWebView2Async();
             var html = Markdown.ToHtml(MdExporter.NormalizeMarkdown(_currentMd), Pipeline);
-            _webView.NavigateToString(WrapHtml(html));
+            NavigateHtml(WrapHtml(html));
 
             _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled = _copyBtn.Enabled = true;
             Status(path);
@@ -126,9 +142,15 @@ public sealed class MdViewerForm : MaterialForm
     }
 
     private void ShowPlaceholder() =>
-        _webView.NavigateToString(WrapHtml(
+        NavigateHtml(WrapHtml(
             "<p style='color:#bbb;padding:60px 40px;font-size:18px'>" +
             "Open or drag-drop a <code>.md</code> file to view and export it.</p>"));
+
+    private void NavigateHtml(string fullHtml)
+    {
+        _pendingHtml = fullHtml;
+        _webView.CoreWebView2.Navigate($"https://docs2md.local/v{++_navVersion}");
+    }
 
     // ── export ──────────────────────────────────────────────────────────
 
@@ -140,7 +162,7 @@ public sealed class MdViewerForm : MaterialForm
             Filter   = "Word document (*.docx)|*.docx",
             FileName = BaseName() + ".docx"
         };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        if (dlg.ShowDialog() != DialogResult.OK) return;
 
         Status("Exporting to Word…");
         var path = dlg.FileName;
@@ -156,7 +178,7 @@ public sealed class MdViewerForm : MaterialForm
             Filter   = "Excel workbook (*.xlsx)|*.xlsx",
             FileName = BaseName() + ".xlsx"
         };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        if (dlg.ShowDialog() != DialogResult.OK) return;
 
         Status("Exporting to Excel…");
         var path = dlg.FileName;
@@ -171,7 +193,7 @@ public sealed class MdViewerForm : MaterialForm
             Filter   = "PDF document (*.pdf)|*.pdf",
             FileName = BaseName() + ".pdf"
         };
-        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        if (dlg.ShowDialog() != DialogResult.OK) return;
 
         Status("Generating PDF…");
         var ps = _webView.CoreWebView2.Environment.CreatePrintSettings();
@@ -341,7 +363,7 @@ public sealed class MdViewerForm : MaterialForm
             BackColor = Color.White,
             ForeColor = navy
         };
-        b.FlatAppearance.BorderColor = primary ? navy : Color.Transparent;
+        b.FlatAppearance.BorderColor = primary ? navy : Color.White;
         b.FlatAppearance.BorderSize  = primary ? 1 : 0;
         b.FlatAppearance.MouseOverBackColor = Color.FromArgb(235, 240, 250);
         b.Click += async (_, _) =>
