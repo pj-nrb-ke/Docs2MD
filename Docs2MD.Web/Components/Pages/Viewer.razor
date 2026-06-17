@@ -1,0 +1,129 @@
+@page "/viewer"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@inject ConversionState State
+@using Markdig
+@using Docs2MD
+
+<PageTitle>Viewer – Docs2MD</PageTitle>
+
+<div class="viewer-page">
+    <div class="viewer-toolbar">
+        <label class="btn-browse viewer-upload">
+            Open .md file
+            <InputFile OnChange="OnFileLoaded" accept=".md" style="display:none" />
+        </label>
+        @if (_markdown is not null)
+        {
+            <button class="btn-action" @onclick="ExportWord">Export to Word</button>
+            <button class="btn-action" @onclick="ExportExcel">Export to Excel</button>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="viewer-placeholder">
+            <span class="spinner"></span> Loading…
+        </div>
+    }
+    else if (_markdown is not null)
+    {
+        <div class="viewer-split">
+            <div class="viewer-pane viewer-source">
+                <div class="pane-label">Markdown</div>
+                <textarea class="md-source" value="@_markdown"
+                          @oninput="OnSourceChanged" spellcheck="false"></textarea>
+            </div>
+            <div class="viewer-pane viewer-rendered">
+                <div class="pane-label">Preview</div>
+                <div class="md-preview" @ref="_previewRef">
+                    @((MarkupString)_html)
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="viewer-placeholder">
+            <p>Open a <code>.md</code> file to preview it here, or convert a document first.</p>
+        </div>
+    }
+</div>
+
+@code {
+    private string? _markdown;
+    private string _html = "";
+    private bool _loading;
+    private ElementReference _previewRef;
+
+    private static readonly MarkdownPipeline _pipeline =
+        new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+
+    protected override void OnInitialized()
+    {
+        // Pick up a result handed over from the Convert page (same circuit).
+        if (State.HasResult)
+        {
+            _markdown = State.Markdown;
+            RenderHtml();
+        }
+    }
+
+    private async Task OnFileLoaded(InputFileChangeEventArgs e)
+    {
+        _loading = true;
+        StateHasChanged();
+
+        using var reader = new System.IO.StreamReader(e.File.OpenReadStream(10 * 1024 * 1024));
+        _markdown = await reader.ReadToEndAsync();
+        RenderHtml();
+
+        _loading = false;
+    }
+
+    private void OnSourceChanged(ChangeEventArgs e)
+    {
+        _markdown = e.Value?.ToString() ?? "";
+        RenderHtml();
+    }
+
+    private void RenderHtml()
+    {
+        _html = Markdown.ToHtml(_markdown ?? "", _pipeline);
+    }
+
+    private async Task ExportWord()
+    {
+        if (_markdown is null) return;
+        var bytes = await Task.Run(() =>
+        {
+            using var ms = new System.IO.MemoryStream();
+            // Write to temp path then read back
+            var tmp = System.IO.Path.GetTempFileName() + ".docx";
+            MdExporter.ToWord(_markdown, tmp);
+            var data = System.IO.File.ReadAllBytes(tmp);
+            System.IO.File.Delete(tmp);
+            return data;
+        });
+        var b64 = System.Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadBase64", "document.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document", b64);
+    }
+
+    private async Task ExportExcel()
+    {
+        if (_markdown is null) return;
+        var bytes = await Task.Run(() =>
+        {
+            var tmp = System.IO.Path.GetTempFileName() + ".xlsx";
+            MdExporter.ToExcel(_markdown, tmp);
+            var data = System.IO.File.ReadAllBytes(tmp);
+            System.IO.File.Delete(tmp);
+            return data;
+        });
+        var b64 = System.Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadBase64", "export.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", b64);
+    }
+}

@@ -1,0 +1,64 @@
+@page "/wireframe"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@inject IJSRuntime JS
+@using Markdig
+
+<PageTitle>Wireframe – Docs2MD</PageTitle>
+
+<div class="wf-page">
+    <div class="viewer-toolbar">
+        <label class="btn-browse viewer-upload">
+            Open .md file
+            <InputFile OnChange="OnFileLoaded" accept=".md" style="display:none" />
+        </label>
+        @if (_loaded)
+        {
+            <button class="btn-action" @onclick="PrintAsync">Print / Save PDF</button>
+        }
+        @if (_fileName is not null)
+        {
+            <span style="margin-left:12px;font-size:0.85rem;color:var(--muted)">@_fileName</span>
+        }
+    </div>
+
+    @if (_loaded)
+    {
+        <iframe class="wf-iframe" @ref="_iframeRef" sandbox="allow-scripts"></iframe>
+    }
+    else
+    {
+        <div class="viewer-placeholder">
+            <p>Open a <code>.md</code> wireframe file to render it here.</p>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loaded;
+    private string? _html;
+    private string? _fileName;
+    private ElementReference _iframeRef;
+
+    private static readonly MarkdownPipeline _pipeline =
+        new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+
+    private async Task OnFileLoaded(InputFileChangeEventArgs e)
+    {
+        using var reader = new System.IO.StreamReader(e.File.OpenReadStream(10 * 1024 * 1024));
+        var md = await reader.ReadToEndAsync();
+        _fileName = e.File.Name;
+        _html = WireframeRenderer.WrapHtml(
+            Markdown.ToHtml(WireframeRenderer.NormalizeMarkdown(md), _pipeline));
+        _loaded = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loaded && _html is not null)
+            await JS.InvokeVoidAsync("setIframeSrcdoc", _iframeRef, _html);
+    }
+
+    private async Task PrintAsync() =>
+        await JS.InvokeVoidAsync("printPage");
+}

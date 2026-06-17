@@ -1,0 +1,38 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+
+<AuthorizeView>
+    <Authorized>
+        <div class="app-shell">
+            <header class="topbar">
+                <a class="brand" href="/">
+                    <img src="/images/logo.svg" alt="Docs2MD" class="brand-logo" />
+                </a>
+                <nav class="topbar-nav">
+                    <a href="/">Convert</a>
+                    <a href="/viewer">Viewer</a>
+                    <a href="/wireframe">Wireframe</a>
+                </nav>
+                <div class="topbar-user">
+                    <span class="user-name">@context.User.Identity?.Name</span>
+                    <a class="btn-logout" href="/Account/Logout">Sign out</a>
+                </div>
+            </header>
+            <main class="main-content">
+                @Body
+            </main>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="app-shell">
+            <header class="topbar">
+                <a class="brand" href="/">
+                    <img src="/images/logo.svg" alt="Docs2MD" class="brand-logo" />
+                </a>
+            </header>
+            <main class="main-content">
+                @Body
+            </main>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>

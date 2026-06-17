@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Docs2MD.Core/Docs2MD.Core.csproj" />
+  <Project Path="Docs2MD.Desktop/Docs2MD.Desktop.csproj" />
+  <Project Path="Docs2MD.Web/Docs2MD.Web.csproj" />
+</Solution>

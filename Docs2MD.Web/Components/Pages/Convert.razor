@@ -1,0 +1,205 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@rendermode InteractiveServer
+@inject ConversionService Converter
+@inject ConversionState State
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Convert – Docs2MD</PageTitle>
+
+<!-- InputFile lives outside the conditional so it stays in the DOM after re-render -->
+<div id="file-input-container" style="display:none">
+    <InputFile id="browse-input" OnChange="OnFileSelected" accept=".pdf,.docx,.md" />
+</div>
+
+<div class="convert-page">
+    <div class="page-header">
+        <h1>Convert to Markdown</h1>
+        <p>Drop a PDF or Word document and get clean Markdown back.</p>
+    </div>
+
+    <div id="drop-zone-container" class="drop-zone">
+        @if (_file is null)
+        {
+            <div class="drop-hint">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4-4 4M12 8v8"/>
+                </svg>
+                <span>Drop file here</span>
+                <span class="drop-sub">PDF or DOCX · max @(Converter.MaxBytes / 1024 / 1024) MB</span>
+                <label class="btn-browse" for="browse-input">Browse</label>
+            </div>
+        }
+        else
+        {
+            <div class="drop-selected">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <div>
+                    <div class="file-name">@_file.Name</div>
+                    <div class="file-size">@FormatSize(_file.Size)</div>
+                </div>
+                <button class="btn-clear" @onclick="ClearFile" title="Remove">✕</button>
+            </div>
+        }
+    </div>
+
+    <!-- OCR options -->
+    <details class="ocr-panel">
+        <summary>OCR options</summary>
+        <div class="ocr-options">
+            <label class="opt-row">
+                <input type="checkbox" @bind="_options.OcrEnabled" />
+                Enable OCR fallback for scanned pages
+            </label>
+            <label class="opt-row">
+                <input type="checkbox" @bind="_options.ForceOcr" disabled="@(!_options.OcrEnabled)" />
+                Force OCR on every page
+            </label>
+            <label class="opt-row">
+                Language
+                <select @bind="_options.OcrLanguage" disabled="@(!_options.OcrEnabled)">
+                    <option value="eng">English</option>
+                    <option value="deu">German</option>
+                    <option value="fra">French</option>
+                    <option value="eng+deu">English + German</option>
+                </select>
+            </label>
+        </div>
+    </details>
+
+    <!-- Convert button -->
+    <div class="action-row">
+        <button class="btn-convert" @onclick="RunConversion"
+                disabled="@(_file is null || _running)">
+            @if (_running) { <span class="spinner"></span> }
+            @(_running ? "Converting…" : "Convert")
+        </button>
+        @if (_running)
+        {
+            <button class="btn-cancel" @onclick="Cancel">Cancel</button>
+        }
+    </div>
+
+    <!-- Log -->
+    @if (_log.Count > 0)
+    {
+        <div class="log-box">
+            @foreach (var line in _log)
+            {
+                <div class="log-line">@line</div>
+            }
+        </div>
+    }
+
+    <!-- Error -->
+    @if (_error is not null)
+    {
+        <div class="error-box">@_error</div>
+    }
+
+    <!-- Result -->
+    @if (_result is not null)
+    {
+        <div class="result-panel">
+            <div class="result-header">
+                <span class="result-label">✓ Converted</span>
+                <div class="result-actions">
+                    <button class="btn-action" @onclick="DownloadMarkdown">Download .md</button>
+                    <button class="btn-action btn-action-secondary" @onclick="ViewInViewer">Open in Viewer</button>
+                </div>
+            </div>
+            <pre class="result-preview">@(_result.Length > 3000 ? _result[..3000] + "\n\n… (truncated for preview)" : _result)</pre>
+        </div>
+    }
+</div>
+
+@code {
+    private IBrowserFile? _file;
+    private bool _running;
+    private string? _error;
+    private string? _result;
+    private readonly List<string> _log = [];
+    private CancellationTokenSource? _cts;
+    private readonly ConvertOptions _options = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("setupDropZone", "drop-zone-container", "file-input-container");
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _file = e.File;
+        _result = null;
+        _error = null;
+        _log.Clear();
+    }
+
+    private void ClearFile()
+    {
+        _file = null;
+        _result = null;
+        _error = null;
+        _log.Clear();
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    private async Task RunConversion()
+    {
+        if (_file is null) return;
+
+        _running = true;
+        _error = null;
+        _result = null;
+        _log.Clear();
+        _cts = new CancellationTokenSource();
+
+        try
+        {
+            await using var stream = _file.OpenReadStream(Converter.MaxBytes);
+            var (md, err) = await Converter.ConvertAsync(
+                stream,
+                _file.Name,
+                _options,
+                msg => { _log.Add(msg); InvokeAsync(StateHasChanged); },
+                _cts.Token);
+
+            _result = md;
+            _error = err;
+        }
+        finally
+        {
+            _running = false;
+            _cts = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task DownloadMarkdown()
+    {
+        if (_result is null) return;
+        var name = Path.GetFileNameWithoutExtension(_file?.Name ?? "output") + ".md";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(_result);
+        var b64 = System.Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadBase64", name, "text/markdown", b64);
+    }
+
+    private void ViewInViewer()
+    {
+        if (_result is null) return;
+        State.Set(_result, _file?.Name);
+        Nav.NavigateTo("/viewer");
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024} KB",
+        _ => $"{bytes / 1024 / 1024:F1} MB"
+    };
+}

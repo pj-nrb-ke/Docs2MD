@@ -4,7 +4,6 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Tesseract;
-// WinForms global usings pull in System.Drawing — disambiguate explicitly
 using ISImage = SixLabors.ImageSharp.Image;
 using ISColor = SixLabors.ImageSharp.Color;
 

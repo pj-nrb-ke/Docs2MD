@@ -358,7 +358,7 @@ public static class MdExporter
     /// Inserts a blank line before list items that directly follow a paragraph
     /// so Markdig reliably parses inline bold/italic inside list items.
     /// </summary>
-    internal static string NormalizeMarkdown(string md) =>
+    public static string NormalizeMarkdown(string md) =>
         System.Text.RegularExpressions.Regex.Replace(
             md, @"([^\n])\n([ \t]*[-*+] )", "$1\n\n$2",
             System.Text.RegularExpressions.RegexOptions.Multiline);
