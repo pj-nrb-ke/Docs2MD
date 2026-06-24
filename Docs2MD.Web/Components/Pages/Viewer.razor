@@ -14,10 +14,13 @@
             Open .md file
             <InputFile OnChange="OnFileLoaded" accept=".md" style="display:none" />
         </label>
-        @if (_markdown is not null)
+        <button class="btn-action" @onclick="PasteMarkdown">Paste Markdown</button>
+        @if (!string.IsNullOrWhiteSpace(_markdown))
         {
             <button class="btn-action" @onclick="ExportWord">Export to Word</button>
             <button class="btn-action" @onclick="ExportExcel">Export to Excel</button>
+            <button class="btn-action @(_copied ? "btn-action-copied" : "")" @onclick="CopyPreview">@_copyLabel</button>
+            <button class="btn-action @(_selCopied ? "btn-action-copied" : "")" @onclick="CopySelected">@_copySelLabel</button>
         }
     </div>
 
@@ -27,46 +30,64 @@
             <span class="spinner"></span> Loading…
         </div>
     }
-    else if (_markdown is not null)
+    else
     {
         <div class="viewer-split">
             <div class="viewer-pane viewer-source">
                 <div class="pane-label">Markdown</div>
                 <textarea class="md-source" value="@_markdown"
-                          @oninput="OnSourceChanged" spellcheck="false"></textarea>
+                          @oninput="OnSourceChanged" spellcheck="false"
+                          placeholder="Paste or type Markdown here…"></textarea>
             </div>
             <div class="viewer-pane viewer-rendered">
                 <div class="pane-label">Preview</div>
                 <div class="md-preview" @ref="_previewRef">
-                    @((MarkupString)_html)
+                    @if (!string.IsNullOrEmpty(_html))
+                    {
+                        @((MarkupString)_html)
+                    }
+                    else
+                    {
+                        <p class="preview-hint">Open or paste Markdown to preview it here.</p>
+                    }
                 </div>
             </div>
-        </div>
-    }
-    else
-    {
-        <div class="viewer-placeholder">
-            <p>Open a <code>.md</code> file to preview it here, or convert a document first.</p>
         </div>
     }
 </div>
 
 @code {
-    private string? _markdown;
+    private string _markdown = "";
     private string _html = "";
     private bool _loading;
     private ElementReference _previewRef;
+    private string _copyLabel    = "Copy Preview";
+    private bool   _copied;
+    private string _copySelLabel = "Copy Selected";
+    private bool   _selCopied;
 
     private static readonly MarkdownPipeline _pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
     protected override void OnInitialized()
     {
-        // Pick up a result handed over from the Convert page (same circuit).
         if (State.HasResult)
         {
-            _markdown = State.Markdown;
+            _markdown = State.Markdown ?? "";
             RenderHtml();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_loading && !string.IsNullOrEmpty(_html))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("enhancePreviewCopy",       _previewRef);
+                await JS.InvokeVoidAsync("setupPreviewContextMenu",  _previewRef);
+            }
+            catch { }
         }
     }
 
@@ -90,16 +111,68 @@
 
     private void RenderHtml()
     {
-        _html = Markdown.ToHtml(_markdown ?? "", _pipeline);
+        _html = Markdown.ToHtml(_markdown, _pipeline);
+    }
+
+    private async Task PasteMarkdown()
+    {
+        try
+        {
+            var text = await JS.InvokeAsync<string>("readClipboardText");
+            if (!string.IsNullOrEmpty(text))
+            {
+                _markdown = text;
+                RenderHtml();
+            }
+        }
+        catch { }
+    }
+
+    private async Task CopyPreview()
+    {
+        if (string.IsNullOrEmpty(_html)) return;
+        try
+        {
+            var wrapped = $"<div style=\"font-family:Calibri,Arial,sans-serif;color:#1a2233;line-height:1.6;\">{_html}</div>";
+            await JS.InvokeVoidAsync("copyHtmlToClipboard", wrapped, _markdown);
+            _copied = true;
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+            _copyLabel = "Copy Preview";
+        }
+        catch { }
+    }
+
+    private async Task CopySelected()
+    {
+        try
+        {
+            var hadSelection = await JS.InvokeAsync<bool>("copySelectedToClipboard", true);
+            if (!hadSelection)
+            {
+                _copySelLabel = "Nothing selected";
+                StateHasChanged();
+                await Task.Delay(1500);
+                _copySelLabel = "Copy Selected";
+                return;
+            }
+            _selCopied    = true;
+            _copySelLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _selCopied    = false;
+            _copySelLabel = "Copy Selected";
+        }
+        catch { }
     }
 
     private async Task ExportWord()
     {
-        if (_markdown is null) return;
+        if (string.IsNullOrEmpty(_markdown)) return;
         var bytes = await Task.Run(() =>
         {
-            using var ms = new System.IO.MemoryStream();
-            // Write to temp path then read back
             var tmp = System.IO.Path.GetTempFileName() + ".docx";
             MdExporter.ToWord(_markdown, tmp);
             var data = System.IO.File.ReadAllBytes(tmp);
@@ -113,7 +186,7 @@
 
     private async Task ExportExcel()
     {
-        if (_markdown is null) return;
+        if (string.IsNullOrEmpty(_markdown)) return;
         var bytes = await Task.Run(() =>
         {
             var tmp = System.IO.Path.GetTempFileName() + ".xlsx";

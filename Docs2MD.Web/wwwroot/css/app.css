@@ -415,6 +415,17 @@ body {
     padding: 48px;
 }
 
+.preview-hint {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 32px;
+    text-align: center;
+}
+
+.btn-action-copied {
+    background: var(--teal) !important;
+}
+
 /* ── Wireframe page ─────────────────────────────────────────────────── */
 .main-content:has(.wf-page) {
     max-width: 100%;

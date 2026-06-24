@@ -28,10 +28,13 @@ public sealed class MdViewerForm : Form
     // ── Fields ───────────────────────────────────────────────────────────
     private readonly WebView2  _webView;
     private readonly Button    _openBtn;
+    private readonly Button    _pasteBtn;
     private readonly Button    _wordBtn;
     private readonly Button    _excelBtn;
     private readonly Button    _pdfBtn;
     private readonly Button    _copyBtn;
+    private readonly Button    _copyRtfBtn;
+    private readonly Button    _copySelBtn;
     private readonly Label     _statusLabel;
     private readonly Label     _titleLabel;
     private string?            _currentPath;
@@ -48,8 +51,8 @@ public sealed class MdViewerForm : Form
     {
         FormBorderStyle = FormBorderStyle.None;
         Text            = "MD Viewer / Export — Docs2MD";
-        Size            = new Size(1150, 860);
-        MinimumSize     = new Size(700, 500);
+        Size            = new Size(1500, 860);
+        MinimumSize     = new Size(960, 500);
         StartPosition   = FormStartPosition.CenterScreen;
         BackColor       = BgGray;
         AllowDrop       = true;
@@ -94,13 +97,17 @@ public sealed class MdViewerForm : Form
             Padding  = new Padding(6, 4, 4, 4), BackColor = Color.White
         };
 
-        _openBtn  = Btn("📂  Open MD…",      () => OpenAsync(),        primary: true);
-        _wordBtn  = Btn("📝  Export Word…",  () => ExportWordAsync());
-        _excelBtn = Btn("📊  Export Excel…", () => ExportExcelAsync());
-        _pdfBtn   = Btn("📄  Save PDF…",     () => SavePdfAsync());
-        _copyBtn  = Btn("📋  Copy Image",    () => CopyAsync());
+        _openBtn    = Btn("📂  Open MD…",        () => OpenAsync(),           primary: true);
+        _pasteBtn   = Btn("📋  Paste Markdown",  () => PasteMarkdownAsync(),  primary: true);
+        _wordBtn    = Btn("📝  Export Word…",    () => ExportWordAsync());
+        _excelBtn   = Btn("📊  Export Excel…",   () => ExportExcelAsync());
+        _pdfBtn     = Btn("📄  Save PDF…",       () => SavePdfAsync());
+        _copyBtn    = Btn("🖼️  Copy Image",      () => CopyImageAsync());
+        _copyRtfBtn = Btn("📧  Copy Rich Text",  () => CopyRichTextAsync());
+        _copySelBtn = Btn("✂️  Copy Selected",  () => CopySelectedAsync());
 
-        _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled = _copyBtn.Enabled = false;
+        _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled =
+            _copyBtn.Enabled = _copyRtfBtn.Enabled = _copySelBtn.Enabled = false;
 
         _statusLabel = new Label
         {
@@ -110,7 +117,7 @@ public sealed class MdViewerForm : Form
             Font      = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f)
         };
 
-        toolbar.Controls.AddRange([_openBtn, _wordBtn, _excelBtn, _pdfBtn, _copyBtn, _statusLabel]);
+        toolbar.Controls.AddRange([_openBtn, _pasteBtn, _wordBtn, _excelBtn, _pdfBtn, _copyBtn, _copyRtfBtn, _copySelBtn, _statusLabel]);
         toolbarPanel.Controls.Add(toolbar);
         content.Controls.Add(toolbarPanel, 0, 0);
 
@@ -127,6 +134,21 @@ public sealed class MdViewerForm : Form
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled            = false;
                 _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                 _webView.CoreWebView2.Settings.IsZoomControlEnabled          = false;
+
+                // Right-click context menu: Copy as Rich Text / Copy as Plain Text
+                _webView.CoreWebView2.ContextMenuRequested += (_, e) =>
+                {
+                    e.Handled = true;
+                    var screenPt = _webView.PointToScreen(e.Location);
+                    var strip = new ContextMenuStrip();
+                    var copyRich  = new ToolStripMenuItem("Copy as Rich Text");
+                    var copyPlain = new ToolStripMenuItem("Copy as Plain Text");
+                    copyRich.Click  += async (_, _) => await CopySelectedAsync(rich: true);
+                    copyPlain.Click += async (_, _) => await CopySelectedAsync(rich: false);
+                    strip.Items.Add(copyRich);
+                    strip.Items.Add(copyPlain);
+                    strip.Show(screenPt);
+                };
 
                 // Serve generated HTML via a virtual HTTPS host so Chromium renders
                 // it as trusted HTML without any data-URL or file-URL restrictions.
@@ -334,8 +356,36 @@ public sealed class MdViewerForm : Form
             var html = Markdown.ToHtml(MdExporter.NormalizeMarkdown(_currentMd), Pipeline);
             NavigateHtml(WrapHtml(html));
 
-            _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled = _copyBtn.Enabled = true;
+            _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled =
+                _copyBtn.Enabled = _copyRtfBtn.Enabled = _copySelBtn.Enabled = true;
             Status(path);
+        }
+        catch (Exception ex) { Status($"Error: {ex.Message}", error: true); }
+    }
+
+    private async Task PasteMarkdownAsync()
+    {
+        var text = Clipboard.GetText();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            Status("Clipboard is empty or contains no text.", error: true);
+            return;
+        }
+
+        Status("Rendering pasted content…");
+        try
+        {
+            _currentPath = null;
+            _currentMd   = text;
+            _titleLabel.Text = "MD Viewer  —  Pasted content";
+
+            await _webView.EnsureCoreWebView2Async();
+            var html = Markdown.ToHtml(MdExporter.NormalizeMarkdown(_currentMd), Pipeline);
+            NavigateHtml(WrapHtml(html));
+
+            _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled =
+                _copyBtn.Enabled = _copyRtfBtn.Enabled = _copySelBtn.Enabled = true;
+            Status("Pasted content rendered");
         }
         catch (Exception ex) { Status($"Error: {ex.Message}", error: true); }
     }
@@ -343,7 +393,7 @@ public sealed class MdViewerForm : Form
     private void ShowPlaceholder() =>
         NavigateHtml(WrapHtml(
             "<p style='color:#bbb;padding:60px 40px;font-size:18px'>" +
-            "Open or drag-drop a <code>.md</code> file to view and export it.</p>"));
+            "Open or drag-drop a <code>.md</code> file, or click <b>Paste Markdown</b> to paste text.</p>"));
 
     private void NavigateHtml(string fullHtml)
     {
@@ -403,7 +453,7 @@ public sealed class MdViewerForm : Form
         Status($"Saved: {Path.GetFileName(dlg.FileName)}");
     }
 
-    private async Task CopyAsync()
+    private async Task CopyImageAsync()
     {
         Status("Capturing…");
         using var ms  = new MemoryStream();
@@ -416,7 +466,92 @@ public sealed class MdViewerForm : Form
         _statusLabel.Text      = "✓ Copied to clipboard!";
         await Task.Delay(2000);
         _statusLabel.ForeColor = Color.Gray;
-        _statusLabel.Text      = _currentPath ?? "";
+        _statusLabel.Text      = _currentPath ?? "Pasted content";
+    }
+
+    private async Task CopyRichTextAsync()
+    {
+        if (_currentMd is null) return;
+
+        Status("Copying rich text…");
+        var html    = Markdown.ToHtml(MdExporter.NormalizeMarkdown(_currentMd), Pipeline);
+        var cfHtml  = BuildCFHtml(html);
+        var dataObj = new DataObject();
+        dataObj.SetData(DataFormats.Html, cfHtml);
+        dataObj.SetData(DataFormats.Text, _currentMd);
+        Clipboard.SetDataObject(dataObj, copy: true);
+
+        _statusLabel.ForeColor = Color.ForestGreen;
+        _statusLabel.Text      = "✓ Copied as rich text — paste into Outlook or eM Client";
+        await Task.Delay(2500);
+        _statusLabel.ForeColor = Color.Gray;
+        _statusLabel.Text      = _currentPath ?? "Pasted content";
+    }
+
+    private async Task CopySelectedAsync(bool rich = true)
+    {
+        var htmlJson  = await _webView.CoreWebView2.ExecuteScriptAsync(@"(function(){
+            var sel=window.getSelection();
+            if(!sel||sel.isCollapsed)return null;
+            var r=sel.getRangeAt(0);
+            var d=document.createElement('div');
+            d.appendChild(r.cloneContents());
+            return d.innerHTML;
+        })()");
+        var plainJson = await _webView.CoreWebView2.ExecuteScriptAsync(
+            "window.getSelection()?.toString()??''");
+
+        var html  = System.Text.Json.JsonSerializer.Deserialize<string>(htmlJson);
+        var plain = System.Text.Json.JsonSerializer.Deserialize<string>(plainJson) ?? "";
+
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            Status("Select text in the preview first.", error: true);
+            return;
+        }
+
+        if (rich)
+        {
+            var cfHtml  = BuildCFHtml(html);
+            var dataObj = new DataObject();
+            dataObj.SetData(DataFormats.Html, cfHtml);
+            dataObj.SetData(DataFormats.Text, plain);
+            Clipboard.SetDataObject(dataObj, copy: true);
+        }
+        else
+        {
+            Clipboard.SetText(plain);
+        }
+
+        _statusLabel.ForeColor = Color.ForestGreen;
+        _statusLabel.Text      = rich ? "✓ Selection copied as rich text" : "✓ Selection copied as plain text";
+        await Task.Delay(2000);
+        _statusLabel.ForeColor = Color.Gray;
+        _statusLabel.Text      = _currentPath ?? "Pasted content";
+    }
+
+    // Builds the Windows CF_HTML clipboard format string required by Outlook / eM Client.
+    private static string BuildCFHtml(string htmlFragment)
+    {
+        const string headerTemplate =
+            "Version:0.9\r\n" +
+            "StartHTML:{0:D10}\r\n" +
+            "EndHTML:{1:D10}\r\n" +
+            "StartFragment:{2:D10}\r\n" +
+            "EndFragment:{3:D10}\r\n";
+
+        const string prefix = "<html><body>\r\n<!--StartFragment-->";
+        const string suffix = "<!--EndFragment-->\r\n</body></html>";
+
+        var enc       = System.Text.Encoding.UTF8;
+        int headerLen = enc.GetByteCount(string.Format(headerTemplate, 0, 0, 0, 0));
+        int startHtml     = headerLen;
+        int startFragment = startHtml     + enc.GetByteCount(prefix);
+        int endFragment   = startFragment + enc.GetByteCount(htmlFragment);
+        int endHtml       = endFragment   + enc.GetByteCount(suffix);
+
+        return string.Format(headerTemplate, startHtml, endHtml, startFragment, endFragment)
+               + prefix + htmlFragment + suffix;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
