@@ -1,8 +1,9 @@
 @echo off
 rem Build script for Docs2MD.
-rem   build.cmd         -- builds desktop EXE (default)
-rem   build.cmd web     -- builds Blazor web app into dist-web\
-rem   build.cmd all     -- builds both
+rem   build.cmd           -- builds desktop EXE (default)
+rem   build.cmd web       -- builds Blazor web app into dist-web\
+rem   build.cmd all       -- builds both
+rem   build.cmd installer -- builds desktop EXE then the Inno Setup installer (dist\Docs2MD-Setup.exe)
 setlocal
 cd /d "%~dp0"
 
@@ -19,6 +20,12 @@ if /i "%TARGET%"=="all" (
 
 if /i "%TARGET%"=="web" (
     call :web
+    if errorlevel 1 goto :err
+    goto :done
+)
+
+if /i "%TARGET%"=="installer" (
+    call :installer
     if errorlevel 1 goto :err
     goto :done
 )
@@ -55,10 +62,26 @@ dotnet publish Docs2MD.Web\Docs2MD.Web.csproj -c Release -o dist-web
 if errorlevel 1 exit /b 1
 exit /b 0
 
+rem ── Installer build ──────────────────────────────────────────────────
+:installer
+call :desktop
+if errorlevel 1 exit /b 1
+echo [*] Building Inno Setup installer...
+set "ISCC=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if not exist "%ISCC%" (
+    echo Inno Setup 6 not found. Install it:  winget install -e --id JRSoftware.InnoSetup
+    exit /b 1
+)
+"%ISCC%" installer\Docs2MD.iss
+exit /b %errorlevel%
+
 :done
 echo.
 if /i "%TARGET%"=="web" echo Done. Deploy dist-web\ to your server (Azure App Service, etc.)
 if /i "%TARGET%"=="desktop" echo Done. Double-click: %~dp0dist\Docs2MD.exe
+if /i "%TARGET%"=="installer" echo Done. Installer: %~dp0dist\Docs2MD-Setup.exe
 if /i "%TARGET%"=="all" echo Done. dist\ = Desktop exe   dist-web\ = Web app
 echo.
 pause

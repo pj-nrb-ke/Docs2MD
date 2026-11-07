@@ -21,6 +21,15 @@ dist\Docs2MD.exe
 
 (Requires the .NET 8 SDK, which you already use for WizAccountant.)
 
+### Installer (optional)
+
+`build.cmd installer` builds `dist\Docs2MD-Setup.exe` — a per-user installer (no admin)
+that installs the app, adds a Start Menu shortcut and the **Convert to MD** Send To entry,
+registers the right-click "Convert to MD here" verbs for PDF/DOCX/XLSX, and creates an
+Add/Remove Programs entry. Requires [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+(`winget install -e --id JRSoftware.InnoSetup`). The target machine needs the
+[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (the installer checks).
+
 ## Using the app
 
 1. Run `Docs2MD.exe`.
