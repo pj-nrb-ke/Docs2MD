@@ -3,3 +3,6 @@ obj/
 dist/
 tessdata/
 *.user
+
+# SQLite dev database + its WAL/SHM sidecars (regenerated when the web app runs)
+docs2md.db*
