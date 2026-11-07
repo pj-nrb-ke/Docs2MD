@@ -378,24 +378,24 @@ public sealed class MainForm : Form
         flow.Controls.AddRange([
             Btn("🖼  Wireframe Viewer",   Style.Outlined, (_, _) => new WireframeViewerForm().Show(this)),
             Btn("📄  MD Viewer / Export", Style.Outlined, (_, _) => new MdViewerForm().Show(this)),
-            Btn("🖱  Right-click menu",   Style.Outlined, (_, _) => ToggleExplorerMenu()),
+            Btn("📨  Send To shortcut",   Style.Outlined, (_, _) => ToggleExplorerMenu()),
         ]);
         bar.Controls.Add(flow);
         return bar;
     }
 
-    // Installs or removes the Explorer "Convert to MD here" right-click verb (per-user).
+    // Adds or removes the per-user "Convert to MD" Send To shortcut.
     private void ToggleExplorerMenu()
     {
         try
         {
             if (ExplorerMenu.IsInstalled())
             {
-                if (MessageBox.Show(this, "Remove the 'Convert to MD here' right-click menu?",
+                if (MessageBox.Show(this, "Remove the 'Convert to MD' entry from your Send To menu?",
                         "Docs2MD", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                 {
                     ExplorerMenu.Uninstall();
-                    MessageBox.Show(this, "Right-click menu removed.", "Docs2MD",
+                    MessageBox.Show(this, "Send To shortcut removed.", "Docs2MD",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
@@ -403,14 +403,15 @@ public sealed class MainForm : Form
             {
                 ExplorerMenu.Install();
                 MessageBox.Show(this,
-                    "Added 'Convert to MD here' to the right-click menu for PDF, DOCX and XLSX files.\n\n" +
-                    "On Windows 11 it appears under 'Show more options'.",
+                    "Added 'Convert to MD' to your Send To menu.\n\n" +
+                    "In Explorer, select one or more PDF / DOCX / XLSX files, then " +
+                    "right-click → Send to → Convert to MD. A .md file is written next to each.",
                     "Docs2MD", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Could not update the right-click menu:\n" + ex.Message,
+            MessageBox.Show(this, "Could not update the Send To shortcut:\n" + ex.Message,
                 "Docs2MD", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }

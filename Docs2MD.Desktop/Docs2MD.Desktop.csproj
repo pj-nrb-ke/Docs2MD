@@ -11,6 +11,7 @@
     <RootNamespace>Docs2MD</RootNamespace>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
     <UseAppHost>true</UseAppHost>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
