@@ -28,8 +28,7 @@
     <PackageReference Include="Docnet.Core" Version="2.6.0" />
     <!-- OCR engine -->
     <PackageReference Include="Tesseract" Version="5.2.0" />
-    <!-- Raw BGRA -> PNG for Tesseract input -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.*" />
+    <!-- (BGRA -> BMP for Tesseract is done in BmpWriter; no image library needed.) -->
   </ItemGroup>
 
 </Project>

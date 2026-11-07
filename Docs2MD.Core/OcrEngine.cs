@@ -1,19 +1,14 @@
 using Docnet.Core;
 using Docnet.Core.Models;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 using Tesseract;
-using ISImage = SixLabors.ImageSharp.Image;
-using ISColor = SixLabors.ImageSharp.Color;
 
 namespace Docs2MD;
 
 /// <summary>
 /// OCR fallback for scanned PDF pages:
-/// Docnet (PDFium) rasterises the page to BGRA, ImageSharp re-encodes to PNG,
-/// Tesseract recognises the text. Requires tessdata\eng.traineddata next to
-/// the exe (run get-tessdata.ps1 once).
+/// Docnet (PDFium) rasterises the page to BGRA, BmpWriter flattens it onto white
+/// and encodes a BMP, Tesseract recognises the text. Requires tessdata\eng.traineddata
+/// next to the exe (run get-tessdata.ps1 once).
 /// </summary>
 public sealed class OcrEngine : IDisposable
 {
@@ -47,13 +42,13 @@ public sealed class OcrEngine : IDisposable
     /// <summary>OCR a single page (0-based index) of the given PDF.</summary>
     public string RecognizePage(string pdfPath, int pageIndex)
     {
-        byte[] png = RenderPageToPng(pdfPath, pageIndex);
-        using var pix = Pix.LoadFromMemory(png);
+        byte[] bmp = RenderPageToBmp(pdfPath, pageIndex);
+        using var pix = Pix.LoadFromMemory(bmp);
         using var result = _engine.Process(pix);
         return result.GetText();
     }
 
-    private byte[] RenderPageToPng(string pdfPath, int pageIndex)
+    private byte[] RenderPageToBmp(string pdfPath, int pageIndex)
     {
         using var docReader = DocLib.Instance.GetDocReader(
             pdfPath,
@@ -64,13 +59,7 @@ public sealed class OcrEngine : IDisposable
         int height = pageReader.GetPageHeight();
         byte[] bgra = pageReader.GetImage(); // BGRA, transparent where unpainted
 
-        using var image = ISImage.LoadPixelData<Bgra32>(bgra, width, height);
-        // Flatten transparency onto white so Tesseract sees black-on-white
-        image.Mutate(ctx => ctx.BackgroundColor(ISColor.White));
-
-        using var ms = new MemoryStream();
-        image.SaveAsPng(ms);
-        return ms.ToArray();
+        return BmpWriter.FromBgraOnWhite(bgra, width, height);
     }
 
     public void Dispose() => _engine.Dispose();
