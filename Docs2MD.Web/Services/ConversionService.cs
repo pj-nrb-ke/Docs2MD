@@ -41,13 +41,7 @@ public sealed class ConversionService
             progress("Converting…");
             Log.Sink = progress;
 
-            string markdown = ext switch
-            {
-                ".pdf"  => await Task.Run(() => PdfToMarkdown.Convert(tmp, options), ct),
-                ".docx" => await Task.Run(() => DocxToMarkdown.Convert(tmp), ct),
-                ".md"   => await File.ReadAllTextAsync(tmp, ct),
-                _       => throw new NotSupportedException($"Unsupported file type: {ext}")
-            };
+            string markdown = await Task.Run(() => DocumentToMarkdown.Convert(tmp, options), ct);
 
             progress("Done.");
             _logger.LogInformation("Converted {File} ({Bytes} bytes)", fileName, content.Length);

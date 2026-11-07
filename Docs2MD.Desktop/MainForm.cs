@@ -113,7 +113,7 @@ public sealed class MainForm : Form
         fileHeaderTlp.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         fileHeaderTlp.Controls.Add(new Label
         {
-            Text = "FILES TO CONVERT  —  drag & drop PDF / DOCX here",
+            Text = "FILES TO CONVERT  —  drag & drop PDF / DOCX / XLSX here",
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(100, 120, 155),
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
@@ -378,9 +378,41 @@ public sealed class MainForm : Form
         flow.Controls.AddRange([
             Btn("🖼  Wireframe Viewer",   Style.Outlined, (_, _) => new WireframeViewerForm().Show(this)),
             Btn("📄  MD Viewer / Export", Style.Outlined, (_, _) => new MdViewerForm().Show(this)),
+            Btn("🖱  Right-click menu",   Style.Outlined, (_, _) => ToggleExplorerMenu()),
         ]);
         bar.Controls.Add(flow);
         return bar;
+    }
+
+    // Installs or removes the Explorer "Convert to MD here" right-click verb (per-user).
+    private void ToggleExplorerMenu()
+    {
+        try
+        {
+            if (ExplorerMenu.IsInstalled())
+            {
+                if (MessageBox.Show(this, "Remove the 'Convert to MD here' right-click menu?",
+                        "Docs2MD", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    ExplorerMenu.Uninstall();
+                    MessageBox.Show(this, "Right-click menu removed.", "Docs2MD",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            else
+            {
+                ExplorerMenu.Install();
+                MessageBox.Show(this,
+                    "Added 'Convert to MD here' to the right-click menu for PDF, DOCX and XLSX files.\n\n" +
+                    "On Windows 11 it appears under 'Show more options'.",
+                    "Docs2MD", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not update the right-click menu:\n" + ex.Message,
+                "Docs2MD", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void TitleBarDrag(object? sender, MouseEventArgs e)
@@ -544,7 +576,7 @@ public sealed class MainForm : Form
 
     // ── File handling ──────────────────────────────────────────────────────
 
-    private static readonly string[] Extensions = [".pdf", ".docx"];
+    private static readonly string[] Extensions = DocumentToMarkdown.SupportedExtensions;
 
     private void OnDragEnter(object? sender, DragEventArgs e)
     {
@@ -580,7 +612,7 @@ public sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Documents (*.pdf;*.docx)|*.pdf;*.docx|All files (*.*)|*.*",
+            Filter = "Documents (*.pdf;*.docx;*.xlsx)|*.pdf;*.docx;*.xlsx|All files (*.*)|*.*",
             Multiselect = true,
             InitialDirectory = ValidFolderOrEmpty(_settings.LastInputFolder)
         };
@@ -696,9 +728,7 @@ public sealed class MainForm : Form
                 try
                 {
                     string markdown = await Task.Run(() =>
-                        Path.GetExtension(file).ToLowerInvariant() == ".docx"
-                            ? DocxToMarkdown.Convert(file)
-                            : PdfToMarkdown.Convert(file, options), token);
+                        DocumentToMarkdown.Convert(file, options), token);
 
                     await File.WriteAllTextAsync(target, markdown, token);
                     AppendLog($"  OK -> {target}");

@@ -22,6 +22,20 @@
             <button class="btn-action @(_copied ? "btn-action-copied" : "")" @onclick="CopyPreview">@_copyLabel</button>
             <button class="btn-action @(_selCopied ? "btn-action-copied" : "")" @onclick="CopySelected">@_copySelLabel</button>
         }
+
+        <div class="reading-controls">
+            <button class="rc-btn" @onclick="() => ChangeFont(-0.1)" title="Decrease font size">A−</button>
+            <span class="rc-pct">@(Pct)%</span>
+            <button class="rc-btn" @onclick="() => ChangeFont(0.1)" title="Increase font size">A+</button>
+            <span class="seg">
+                <button class="seg-btn @(!_wide ? "on" : "")" @onclick="() => SetWide(false)">Narrow</button>
+                <button class="seg-btn @(_wide ? "on" : "")" @onclick="() => SetWide(true)">Wide</button>
+            </span>
+            <span class="seg">
+                <button class="seg-btn @(_sepia ? "on" : "")" @onclick="() => SetSepia(true)">Sepia</button>
+                <button class="seg-btn @(!_sepia ? "on" : "")" @onclick="() => SetSepia(false)">White</button>
+            </span>
+        </div>
     </div>
 
     @if (_loading)
@@ -41,15 +55,18 @@
             </div>
             <div class="viewer-pane viewer-rendered">
                 <div class="pane-label">Preview</div>
-                <div class="md-preview" @ref="_previewRef">
-                    @if (!string.IsNullOrEmpty(_html))
-                    {
-                        @((MarkupString)_html)
-                    }
-                    else
-                    {
-                        <p class="preview-hint">Open or paste Markdown to preview it here.</p>
-                    }
+                <div class="md-preview @(_sepia ? "sepia" : "")"
+                     style="--rfs:@FsCss; --rmaxw:@(_wide ? "none" : "900px")" @ref="_previewRef">
+                    <div class="reading-surface">
+                        @if (!string.IsNullOrEmpty(_html))
+                        {
+                            @((MarkupString)_html)
+                        }
+                        else
+                        {
+                            <p class="preview-hint">Open or paste Markdown to preview it here.</p>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
@@ -66,6 +83,13 @@
     private string _copySelLabel = "Copy Selected";
     private bool   _selCopied;
 
+    // Reading preferences (persisted in browser localStorage), applied to the preview pane.
+    private double _fontScale = 1.0;
+    private bool   _wide;
+    private bool   _sepia = true;
+    private string FsCss => _fontScale.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private string Pct   => (_fontScale * 100).ToString("0");
+
     private static readonly MarkdownPipeline _pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
 
@@ -80,6 +104,19 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try
+            {
+                var p = await JS.InvokeAsync<ReadingPrefs>("readingPrefsLoad");
+                _fontScale = p.Fs is >= 0.6 and <= 2.4 ? p.Fs : 1.0;
+                _wide      = p.Wide;
+                _sepia     = p.Sepia;
+                StateHasChanged();
+            }
+            catch { }
+        }
+
         if (!_loading && !string.IsNullOrEmpty(_html))
         {
             try
@@ -198,5 +235,39 @@
         var b64 = System.Convert.ToBase64String(bytes);
         await JS.InvokeVoidAsync("downloadBase64", "export.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", b64);
+    }
+
+    // ── Reading controls (font size / width / theme) ────────────────────
+    private async Task ChangeFont(double delta)
+    {
+        _fontScale = Math.Clamp(Math.Round(_fontScale + delta, 2), 0.6, 2.4);
+        await SavePrefs();
+    }
+
+    private async Task SetWide(bool wide)
+    {
+        if (_wide == wide) return;
+        _wide = wide;
+        await SavePrefs();
+    }
+
+    private async Task SetSepia(bool sepia)
+    {
+        if (_sepia == sepia) return;
+        _sepia = sepia;
+        await SavePrefs();
+    }
+
+    private async Task SavePrefs()
+    {
+        try { await JS.InvokeVoidAsync("readingPrefsSave", _fontScale, _wide, _sepia); }
+        catch { }
+    }
+
+    private sealed class ReadingPrefs
+    {
+        public double Fs { get; set; } = 1.0;
+        public bool   Wide { get; set; }
+        public bool   Sepia { get; set; } = true;
     }
 }

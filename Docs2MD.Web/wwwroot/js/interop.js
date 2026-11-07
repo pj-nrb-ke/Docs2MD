@@ -153,3 +153,25 @@ window.setupDropZone = function (dropZoneId, inputContainerId) {
         inputEl.dispatchEvent(new Event('change', { bubbles: true }));
     });
 };
+
+// Reading preferences (font scale / width / theme) persisted in localStorage so they
+// survive page reloads. Mirrors the desktop viewer's UserSettings persistence.
+window.readingPrefsLoad = function () {
+    try {
+        return {
+            fs:    parseFloat(localStorage.getItem('d2md_fs')) || 1,
+            wide:  localStorage.getItem('d2md_wide') === '1',
+            sepia: localStorage.getItem('d2md_sepia') !== '0'   // default true
+        };
+    } catch (e) {
+        return { fs: 1, wide: false, sepia: true };
+    }
+};
+
+window.readingPrefsSave = function (fs, wide, sepia) {
+    try {
+        localStorage.setItem('d2md_fs', fs);
+        localStorage.setItem('d2md_wide', wide ? '1' : '0');
+        localStorage.setItem('d2md_sepia', sepia ? '1' : '0');
+    } catch (e) { /* ignore quota / privacy-mode errors */ }
+};

@@ -8,7 +8,7 @@
 
 Docs2MD is a Windows desktop utility built for professionals who work with documents and Markdown. It does three things:
 
-1. **PDF / DOCX → Markdown converter** — drag-and-drop PDF or Word files onto the app and it converts them to clean Markdown text, including OCR support for scanned pages.
+1. **PDF / DOCX / XLSX → Markdown converter** — drag-and-drop PDF, Word or Excel files onto the app and it converts them to clean Markdown text, including OCR support for scanned pages.
 
 2. **Wireframe Viewer** — open any `.md` file that contains ASCII/Unicode box-drawing wireframes and render it as a styled visual diagram. Saves as PNG or PDF.
 
@@ -20,7 +20,7 @@ It is a standalone `.exe` file — no installer, no dependencies, no internet re
 
 ## Key features
 
-- Drag-and-drop PDF and DOCX files for batch conversion
+- Drag-and-drop PDF, DOCX and XLSX files for batch conversion
 - OCR support for scanned PDFs (powered by Tesseract)
 - Wireframe rendering: ASCII box-drawing characters become styled UI diagrams
 - Markdown viewer with smart element highlighting (buttons, dropdowns, status badges)

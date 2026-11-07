@@ -11,6 +11,11 @@ public sealed class UserSettings
     public string? LastInputFolder { get; set; }
     public string? LastOutputFolder { get; set; }
 
+    // MD Viewer reading preferences
+    public double ReaderFontScale { get; set; } = 1.0;
+    public bool   ReaderWide { get; set; }
+    public bool   ReaderSepia { get; set; } = true;
+
     private static string SettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Docs2MD", "settings.json");

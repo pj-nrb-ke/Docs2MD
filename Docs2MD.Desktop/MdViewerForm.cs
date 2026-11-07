@@ -19,8 +19,19 @@ public sealed class MdViewerForm : Form
     // ── P/Invoke ─────────────────────────────────────────────────────────
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern int  SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-    private const int WM_NCLBUTTONDOWN = 0xA1;
-    private const int HT_CAPTION       = 0x02;
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+    private const int  WM_NCLBUTTONDOWN = 0xA1;
+    private const int  HT_CAPTION       = 0x02;
+    private const int  ResizeBorder     = 6;   // thickness of the draggable resize frame
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct RECT  { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MINMAXINFO { public POINT Reserved, MaxSize, MaxPosition, MinTrackSize, MaxTrackSize; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 
     private static readonly Color Navy   = Color.FromArgb(27, 53, 96);
     private static readonly Color BgGray = Color.FromArgb(242, 244, 247);
@@ -35,12 +46,26 @@ public sealed class MdViewerForm : Form
     private readonly Button    _copyBtn;
     private readonly Button    _copyRtfBtn;
     private readonly Button    _copySelBtn;
+    private readonly Button    _fontDownBtn;
+    private readonly Button    _fontUpBtn;
+    private readonly Button    _widthNarrowBtn;
+    private readonly Button    _widthWideBtn;
+    private readonly Button    _themeSepiaBtn;
+    private readonly Button    _themeWhiteBtn;
+    private readonly Label     _fontPctLabel;
+    private readonly ToolTip   _tips = new();
     private readonly Label     _statusLabel;
     private readonly Label     _titleLabel;
     private string?            _currentPath;
     private string?            _currentMd;
     private string             _pendingHtml = "";
     private int                _navVersion  = 0;
+
+    // Reading preferences (persisted in UserSettings), baked into the page CSS.
+    private readonly UserSettings _settings = UserSettings.Load();
+    private double _fontScale = 1.0;
+    private bool   _wide;
+    private bool   _sepia = true;
 
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
@@ -49,12 +74,21 @@ public sealed class MdViewerForm : Form
 
     public MdViewerForm(string? initialFile = null)
     {
+        _fontScale = _settings.ReaderFontScale is >= 0.6 and <= 2.4 ? _settings.ReaderFontScale : 1.0;
+        _wide      = _settings.ReaderWide;
+        _sepia     = _settings.ReaderSepia;
+
         FormBorderStyle = FormBorderStyle.None;
         Text            = "MD Viewer / Export — Docs2MD";
         Size            = new Size(1500, 860);
         MinimumSize     = new Size(960, 500);
         StartPosition   = FormStartPosition.CenterScreen;
-        BackColor       = BgGray;
+        // The WebView2 fills the client area and swallows mouse events on the very
+        // edges, so a borderless form has nothing to grab for resizing. A thin form
+        // border (exposed by Padding) gives the WM_NCHITTEST edge zones real surface
+        // to hit — now every edge/corner is draggable to resize. Navy matches the title bar.
+        BackColor       = Navy;
+        Padding         = new Padding(ResizeBorder);
         AllowDrop       = true;
         DragEnter      += (_, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
         DragDrop       += OnDragDrop;
@@ -83,6 +117,10 @@ public sealed class MdViewerForm : Form
         };
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        // Pin the single column to the panel width so an oversized (wrapping) toolbar
+        // can never stretch the column — which would drag the WebView2 wider than the
+        // window and push the rendered page off to the right.
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
         // Toolbar panel (white background + bottom divider)
         var toolbarPanel = new Panel { Dock = DockStyle.Fill, AutoSize = true, BackColor = Color.White };
@@ -91,9 +129,12 @@ public sealed class MdViewerForm : Form
             Height = 1, Dock = DockStyle.Bottom, BackColor = Color.FromArgb(218, 224, 236)
         });
 
+        // Dock=Top + GrowAndShrink so the toolbar wraps to a second row when the
+        // buttons don't fit the window width, instead of overflowing off-screen.
         var toolbar = new FlowLayoutPanel
         {
-            AutoSize = true, Dock = DockStyle.Fill,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top, WrapContents = true,
             Padding  = new Padding(6, 4, 4, 4), BackColor = Color.White
         };
 
@@ -106,6 +147,29 @@ public sealed class MdViewerForm : Form
         _copyRtfBtn = Btn("📧  Copy Rich Text",  () => CopyRichTextAsync());
         _copySelBtn = Btn("✂️  Copy Selected",  () => CopySelectedAsync());
 
+        // Reading controls (always enabled — they also apply to the placeholder)
+        _fontDownBtn  = Btn("A-", () => ChangeFontAsync(-0.1));
+        _fontUpBtn    = Btn("A+", () => ChangeFontAsync(+0.1));
+        // Width and theme are segmented pairs (Narrow|Wide, Sepia|White) — the active
+        // segment is highlighted and clicking a segment selects that mode directly.
+        _widthNarrowBtn = SegBtn("Narrow", () => SetWideAsync(false));
+        _widthWideBtn   = SegBtn("Wide",   () => SetWideAsync(true));
+        _themeSepiaBtn  = SegBtn("Sepia",  () => SetSepiaAsync(true));
+        _themeWhiteBtn  = SegBtn("White",  () => SetSepiaAsync(false));
+        RefreshSegments();
+        _fontPctLabel = new Label
+        {
+            Text = $"{_fontScale * 100:0}%", AutoSize = true,
+            Margin = new Padding(2, 12, 2, 0), ForeColor = Color.Gray,
+            Font = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f)
+        };
+        _tips.SetToolTip(_fontDownBtn, "Decrease font size");
+        _tips.SetToolTip(_fontUpBtn,   "Increase font size");
+        _tips.SetToolTip(_widthNarrowBtn, "Reading width — centered column");
+        _tips.SetToolTip(_widthWideBtn,   "Full width — fills the window");
+        _tips.SetToolTip(_themeSepiaBtn,  "Sepia (warm) background");
+        _tips.SetToolTip(_themeWhiteBtn,  "White background");
+
         _wordBtn.Enabled = _excelBtn.Enabled = _pdfBtn.Enabled =
             _copyBtn.Enabled = _copyRtfBtn.Enabled = _copySelBtn.Enabled = false;
 
@@ -117,7 +181,12 @@ public sealed class MdViewerForm : Form
             Font      = new Font(SystemFonts.DefaultFont.FontFamily, 8.5f)
         };
 
-        toolbar.Controls.AddRange([_openBtn, _pasteBtn, _wordBtn, _excelBtn, _pdfBtn, _copyBtn, _copyRtfBtn, _copySelBtn, _statusLabel]);
+        toolbar.Controls.AddRange([
+            _openBtn, _pasteBtn, _wordBtn, _excelBtn, _pdfBtn, _copyBtn, _copyRtfBtn, _copySelBtn,
+            Sep(), _fontDownBtn, _fontPctLabel, _fontUpBtn,
+            Sep(), _widthNarrowBtn, _widthWideBtn,
+            Sep(), _themeSepiaBtn, _themeWhiteBtn,
+            _statusLabel]);
         toolbarPanel.Controls.Add(toolbar);
         content.Controls.Add(toolbarPanel, 0, 0);
 
@@ -296,6 +365,14 @@ public sealed class MdViewerForm : Form
 
     protected override void WndProc(ref Message m)
     {
+        const int WM_GETMINMAXINFO = 0x0024;
+        if (m.Msg == WM_GETMINMAXINFO)
+        {
+            base.WndProc(ref m);                 // let WinForms set min-track size from MinimumSize
+            ConstrainMaximizeToWorkArea(m);      // then clamp the maximized bounds to the work area
+            return;
+        }
+
         const int WM_NCHITTEST = 0x84;
         if (m.Msg == WM_NCHITTEST && WindowState == FormWindowState.Normal)
         {
@@ -304,7 +381,7 @@ public sealed class MdViewerForm : Form
             int sy = (lp >> 16) & 0xFFFF;  if (sy > 32767) sy -= 65536;
             var pt = PointToClient(new Point(sx, sy));
             int x = pt.X, y = pt.Y, w = ClientSize.Width, h = ClientSize.Height;
-            const int t = 6;
+            const int t = ResizeBorder;
             if      (x < t    && y < t)    { m.Result = (IntPtr)13; return; }
             else if (x >= w-t && y < t)    { m.Result = (IntPtr)14; return; }
             else if (x < t    && y >= h-t) { m.Result = (IntPtr)16; return; }
@@ -554,6 +631,137 @@ public sealed class MdViewerForm : Form
                + prefix + htmlFragment + suffix;
     }
 
+    // ── Reading controls (width / font size / theme) ─────────────────────
+
+    // One segment of a Narrow|Wide or Sepia|White pair. Segments in a pair sit flush
+    // (no horizontal margin) so they read as a single control; the active one is filled
+    // navy via RefreshSegments/SetSeg.
+    private Button SegBtn(string text, Func<Task> onClick)
+    {
+        var b = new Button
+        {
+            Text = text, AutoSize = true, FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 9f), Cursor = Cursors.Hand,
+            Margin = new Padding(0, 2, 0, 2), Padding = new Padding(11, 4, 11, 4),
+            BackColor = Color.White, ForeColor = Navy
+        };
+        b.FlatAppearance.BorderColor = Navy;
+        b.FlatAppearance.BorderSize  = 1;
+        b.Click += async (_, _) =>
+        {
+            try   { await onClick(); }
+            catch (Exception ex) { Status($"Error: {ex.Message}", error: true); }
+        };
+        return b;
+    }
+
+    // Highlights the segment that matches the current preference.
+    private void RefreshSegments()
+    {
+        SetSeg(_widthNarrowBtn, !_wide);
+        SetSeg(_widthWideBtn,    _wide);
+        SetSeg(_themeSepiaBtn,   _sepia);
+        SetSeg(_themeWhiteBtn,  !_sepia);
+    }
+
+    private static void SetSeg(Button b, bool active)
+    {
+        b.BackColor = active ? Navy : Color.White;
+        b.ForeColor = active ? Color.White : Navy;
+        b.FlatAppearance.MouseOverBackColor = active
+            ? Color.FromArgb(40, 66, 110)
+            : Color.FromArgb(235, 240, 250);
+    }
+
+    private static Label Sep() => new()
+    {
+        Text = "│", AutoSize = true, ForeColor = Color.FromArgb(205, 212, 224),
+        Margin = new Padding(6, 9, 4, 0), Font = new Font("Segoe UI", 11f)
+    };
+
+    private async Task ChangeFontAsync(double delta)
+    {
+        _fontScale = Math.Clamp(Math.Round(_fontScale + delta, 2), 0.6, 2.4);
+        _fontPctLabel.Text = $"{_fontScale * 100:0}%";
+        SaveReadingPrefs();
+        await ApplyReadingVarsAsync();
+    }
+
+    private async Task SetWideAsync(bool wide)
+    {
+        if (_wide == wide) return;
+        _wide = wide;
+        RefreshSegments();
+        SaveReadingPrefs();
+        await ApplyReadingVarsAsync();
+    }
+
+    private async Task SetSepiaAsync(bool sepia)
+    {
+        if (_sepia == sepia) return;
+        _sepia = sepia;
+        RefreshSegments();
+        SaveReadingPrefs();
+        await ApplyReadingVarsAsync();
+    }
+
+    private void SaveReadingPrefs()
+    {
+        _settings.ReaderFontScale = _fontScale;
+        _settings.ReaderWide      = _wide;
+        _settings.ReaderSepia     = _sepia;
+        _settings.Save();
+    }
+
+    // Live-updates the CSS variables in the current document without a reload, so
+    // scroll position and content are preserved. New navigations bake the same
+    // values into :root via WrapHtml, keeping the two in sync.
+    private async Task ApplyReadingVarsAsync()
+    {
+        var core = _webView.CoreWebView2;
+        if (core is null) return;
+        var sets = string.Concat(ReadingVars().Select(kv => $"r.setProperty('{kv.Key}','{kv.Value}');"));
+        await core.ExecuteScriptAsync($"(function(){{var r=document.documentElement.style;{sets}}})();");
+    }
+
+    // The full set of themable CSS variables for the current preferences.
+    private Dictionary<string, string> ReadingVars()
+    {
+        var (bg, fg, surface, border, track, thumb, thumbHover) = _sepia
+            ? ("#f5edda", "#322d24", "#ece2cb", "#d9cdae", "#e7dcc2", "#cdbb95", "#b6a074")
+            : ("#ffffff", "#1a1a1a", "#f2f2f2", "#dddddd", "#eeeeee", "#c3c3c3", "#9a9a9a");
+
+        return new Dictionary<string, string>
+        {
+            ["--fs"]             = _fontScale.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["--maxw"]           = _wide ? "none" : "900px",
+            ["--bg"]             = bg,
+            ["--fg"]             = fg,
+            ["--surface"]        = surface,
+            ["--border"]         = border,
+            ["--sb-track"]       = track,
+            ["--sb-thumb"]       = thumb,
+            ["--sb-thumb-hover"] = thumbHover
+        };
+    }
+
+    // Borderless windows maximize over the taskbar by default; clamp the maximized
+    // size and position to the monitor's work area so the taskbar stays visible.
+    private void ConstrainMaximizeToWorkArea(Message m)
+    {
+        var mmi = Marshal.PtrToStructure<MINMAXINFO>(m.LParam);
+        var monitor = MonitorFromWindow(Handle, MONITOR_DEFAULTTONEAREST);
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (GetMonitorInfo(monitor, ref mi))
+        {
+            mmi.MaxPosition.X = mi.rcWork.Left - mi.rcMonitor.Left;
+            mmi.MaxPosition.Y = mi.rcWork.Top  - mi.rcMonitor.Top;
+            mmi.MaxSize.X     = mi.rcWork.Right  - mi.rcWork.Left;
+            mmi.MaxSize.Y     = mi.rcWork.Bottom - mi.rcWork.Top;
+            Marshal.StructureToPtr(mmi, m.LParam, false);
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private void OnDragDrop(object? sender, DragEventArgs e)
@@ -574,33 +782,42 @@ public sealed class MdViewerForm : Form
         _statusLabel.Text      = text;
     }
 
-    private static string WrapHtml(string body) => $$"""
+    private string WrapHtml(string body)
+    {
+        string rootVars = string.Concat(ReadingVars().Select(kv => $"{kv.Key}:{kv.Value};"));
+        return $$"""
         <!DOCTYPE html>
         <html>
         <head>
         <meta charset="utf-8">
         <style>
+        :root { {{rootVars}} }
         * { box-sizing: border-box; }
+        html { overflow-y: scroll; background: var(--bg); }
+        ::-webkit-scrollbar { width: 13px; }
+        ::-webkit-scrollbar-track { background: var(--sb-track); }
+        ::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: 7px; border: 3px solid var(--sb-track); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); }
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 14px;
-            max-width: 900px;
+            font-size: calc(14px * var(--fs));
+            max-width: var(--maxw);
             margin: 36px auto;
             padding: 0 44px 64px;
-            color: #1a1a1a;
-            background: #ffffff;
+            color: var(--fg);
+            background: var(--bg);
             line-height: 1.7;
         }
 
         /* ── Headings ── */
-        h1 { font-size: 26px; font-weight: 700; border-bottom: 3px solid #1a1a1a; padding-bottom: 10px; margin-top: 6px; }
-        h2 { font-size: 19px; font-weight: 700; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 34px; }
-        h3 { font-size: 15px; font-weight: 600; margin-top: 24px; color: #333; }
-        h4 { font-size: 14px; font-weight: 600; margin-top: 16px; color: #555; }
+        h1 { font-size: calc(26px * var(--fs)); font-weight: 700; border-bottom: 3px solid var(--fg); padding-bottom: 10px; margin-top: 6px; }
+        h2 { font-size: calc(19px * var(--fs)); font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 34px; }
+        h3 { font-size: calc(15px * var(--fs)); font-weight: 600; margin-top: 24px; color: #333; }
+        h4 { font-size: calc(14px * var(--fs)); font-weight: 600; margin-top: 16px; color: #555; }
 
         /* ── Body ── */
         p  { margin: 10px 0; }
-        hr { border: none; border-top: 1px solid #e0e0e0; margin: 26px 0; }
+        hr { border: none; border-top: 1px solid var(--border); margin: 26px 0; }
         strong { font-weight: 700; }
         em { font-style: italic; color: #444; }
         ul, ol { padding-left: 24px; margin: 10px 0; }
@@ -608,23 +825,23 @@ public sealed class MdViewerForm : Form
         blockquote {
             border-left: 4px solid #0078d4;
             margin: 16px 0; padding: 8px 16px;
-            background: #f0f7ff; border-radius: 0 4px 4px 0;
+            background: rgba(0,120,212,0.06); border-radius: 0 4px 4px 0;
         }
         code {
             font-family: Consolas, 'Cascadia Code', 'Courier New', monospace;
-            font-size: 12.5px; background: #f0f0f0;
+            font-size: calc(12.5px * var(--fs)); background: var(--surface);
             padding: 2px 5px; border-radius: 3px; color: #333;
         }
 
         /* ── Code blocks (general) ── */
         pre {
-            background: #f8f8f8; border: 1px solid #ddd;
+            background: var(--surface); border: 1px solid var(--border);
             border-radius: 5px; padding: 14px 18px;
             margin: 16px 0; overflow-x: auto;
         }
         pre code {
             background: none; padding: 0;
-            font-size: 12.5px; white-space: pre; line-height: 1.45; color: #24292e;
+            font-size: calc(12.5px * var(--fs)); white-space: pre; line-height: 1.45; color: #24292e;
         }
 
         /* ── Wireframe code blocks (JS-enhanced) ── */
@@ -647,9 +864,9 @@ public sealed class MdViewerForm : Form
 
         /* ── Tables ── */
         table { border-collapse:collapse; margin:16px 0; width:auto; max-width:100%; }
-        th, td { border:1px solid #ccc; padding:7px 14px; text-align:left; font-size:13.5px; }
-        th { background:#f2f2f2; font-weight:700; }
-        tr:nth-child(even) { background:#fafafa; }
+        th, td { border:1px solid var(--border); padding:7px 14px; text-align:left; font-size: calc(13.5px * var(--fs)); }
+        th { background:var(--surface); font-weight:700; }
+        tr:nth-child(even) { background:rgba(0,0,0,0.03); }
         </style>
         </head>
         <body>
@@ -675,6 +892,7 @@ public sealed class MdViewerForm : Form
         </body>
         </html>
         """;
+    }
 
     private Button Btn(string text, Func<Task> action, bool primary = false)
     {

@@ -447,7 +447,7 @@ public sealed class WireframeViewerForm : MaterialForm
             BackColor = Color.White,
             ForeColor = navy
         };
-        b.FlatAppearance.BorderColor = primary ? navy : Color.Transparent;
+        b.FlatAppearance.BorderColor = primary ? navy : Color.White;
         b.FlatAppearance.BorderSize  = primary ? 1 : 0;
         b.FlatAppearance.MouseOverBackColor = Color.FromArgb(235, 240, 250);
         b.Click += async (_, _) =>

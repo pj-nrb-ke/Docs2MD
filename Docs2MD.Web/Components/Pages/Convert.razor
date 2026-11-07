@@ -10,13 +10,13 @@
 
 <!-- InputFile lives outside the conditional so it stays in the DOM after re-render -->
 <div id="file-input-container" style="display:none">
-    <InputFile id="browse-input" OnChange="OnFileSelected" accept=".pdf,.docx,.md" />
+    <InputFile id="browse-input" OnChange="OnFileSelected" accept=".pdf,.docx,.xlsx,.md" />
 </div>
 
 <div class="convert-page">
     <div class="page-header">
         <h1>Convert to Markdown</h1>
-        <p>Drop a PDF or Word document and get clean Markdown back.</p>
+        <p>Drop a PDF, Word or Excel document and get clean Markdown back.</p>
     </div>
 
     <div id="drop-zone-container" class="drop-zone">
@@ -27,7 +27,7 @@
                     <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4-4 4M12 8v8"/>
                 </svg>
                 <span>Drop file here</span>
-                <span class="drop-sub">PDF or DOCX · max @(Converter.MaxBytes / 1024 / 1024) MB</span>
+                <span class="drop-sub">PDF, DOCX or XLSX · max @(Converter.MaxBytes / 1024 / 1024) MB</span>
                 <label class="btn-browse" for="browse-input">Browse</label>
             </div>
         }
