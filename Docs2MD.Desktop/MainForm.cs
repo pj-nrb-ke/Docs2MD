@@ -113,7 +113,7 @@ public sealed class MainForm : Form
         fileHeaderTlp.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         fileHeaderTlp.Controls.Add(new Label
         {
-            Text = "FILES TO CONVERT  —  drag & drop PDF / DOCX / XLSX here",
+            Text = "FILES TO CONVERT  —  drag & drop PDF / DOCX / XLSX / XLS here",
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
             ForeColor = Color.FromArgb(100, 120, 155),
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
@@ -613,7 +613,7 @@ public sealed class MainForm : Form
     {
         using var dialog = new OpenFileDialog
         {
-            Filter = "Documents (*.pdf;*.docx;*.xlsx)|*.pdf;*.docx;*.xlsx|All files (*.*)|*.*",
+            Filter = "Documents (*.pdf;*.docx;*.xlsx;*.xls)|*.pdf;*.docx;*.xlsx;*.xls|All files (*.*)|*.*",
             Multiselect = true,
             InitialDirectory = ValidFolderOrEmpty(_settings.LastInputFolder)
         };

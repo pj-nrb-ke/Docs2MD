@@ -54,6 +54,9 @@ Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.docx\shell\Docs2MD
 Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.xlsx\shell\Docs2MDConvert";         ValueType: string; ValueName: ""; ValueData: "Convert to MD here"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.xlsx\shell\Docs2MDConvert";         ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#AppExe}"
 Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.xlsx\shell\Docs2MDConvert\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.xls\shell\Docs2MDConvert";          ValueType: string; ValueName: ""; ValueData: "Convert to MD here"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.xls\shell\Docs2MDConvert";          ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#AppExe}"
+Root: HKCU; Subkey: "Software\Classes\SystemFileAssociations\.xls\shell\Docs2MDConvert\command";  ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent

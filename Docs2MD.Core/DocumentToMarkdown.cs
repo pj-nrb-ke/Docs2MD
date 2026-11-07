@@ -8,13 +8,14 @@ namespace Docs2MD;
 public static class DocumentToMarkdown
 {
     /// <summary>Extensions the converters accept (used for drag-drop filtering and shell registration).</summary>
-    public static readonly string[] SupportedExtensions = [".pdf", ".docx", ".xlsx"];
+    public static readonly string[] SupportedExtensions = [".pdf", ".docx", ".xlsx", ".xls"];
 
     public static string Convert(string path, ConvertOptions options) =>
         Path.GetExtension(path).ToLowerInvariant() switch
         {
             ".docx" => DocxToMarkdown.Convert(path),
             ".xlsx" => XlsxToMarkdown.Convert(path),
+            ".xls"  => XlsToMarkdown.Convert(path),
             ".pdf"  => PdfToMarkdown.Convert(path, options),
             ".md"   => File.ReadAllText(path),
             var ext => throw new NotSupportedException($"Unsupported file type: {ext}")

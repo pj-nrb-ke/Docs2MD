@@ -8,6 +8,7 @@
 |-------|----------|
 | `.docx` | Mammoth (docx → semantic HTML) → ReverseMarkdown (HTML → MD). Headings, lists, tables, links preserved. |
 | `.xlsx` | ClosedXML reads each sheet's used range → one GitHub pipe table per sheet (first row = header). |
+| `.xls` | Legacy binary Excel read via ExcelDataReader → same one-table-per-sheet output (raw cell values). |
 | `.pdf` (text) | PdfPig extracts words → lines/paragraph grouping → headings inferred from font size vs body median. |
 | `.pdf` (scanned) | Docnet/PDFium rasterises page at ~300 dpi → Tesseract OCR. Triggered automatically when a page has almost no text layer. |
 
@@ -33,7 +34,7 @@ Add/Remove Programs entry. Requires [Inno Setup 6](https://jrsoftware.org/isinfo
 ## Using the app
 
 1. Run `Docs2MD.exe`.
-2. Drag & drop PDF/DOCX/XLSX files (or folders) onto the window — or use **Add files… / Add folder…**.
+2. Drag & drop PDF/DOCX/XLSX/XLS files (or folders) onto the window — or use **Add files… / Add folder…**.
 3. Optionally pick an output folder (default: `.md` is written next to each input file).
 4. Options: **OCR scanned pages** (on by default), **Force OCR on all PDF pages**, OCR language (`eng`, `eng+deu`, …).
 5. Click **Convert**. Progress and per-file results appear in the log. Click again to cancel.

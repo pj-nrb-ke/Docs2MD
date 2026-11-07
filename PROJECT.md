@@ -20,7 +20,7 @@ It is a standalone `.exe` file — no installer, no dependencies, no internet re
 
 ## Key features
 
-- Drag-and-drop PDF, DOCX and XLSX files for batch conversion
+- Drag-and-drop PDF, DOCX, XLSX and XLS files for batch conversion
 - OCR support for scanned PDFs (powered by Tesseract)
 - Wireframe rendering: ASCII box-drawing characters become styled UI diagrams
 - Markdown viewer with smart element highlighting (buttons, dropdowns, status badges)
